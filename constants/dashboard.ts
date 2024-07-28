@@ -5,6 +5,8 @@ import {
   BoxIcon,
   UserCircle,
   NetworkIcon,
+  Folder,
+  SendToBack,
 } from "lucide-react";
 
 export const sidebarRoutes = [
@@ -22,7 +24,7 @@ export const sidebarRoutes = [
   },
   {
     label: "Filing Cabinet",
-    icon: BoxIcon,
+    icon: Folder,
     href: "/filing_cabinet",
     color: "text-orange-500",
   },
@@ -40,7 +42,7 @@ export const sidebarRoutes = [
   },
   {
     label: "Refer a friend",
-    icon: NetworkIcon,
+    icon: SendToBack,
     href: "/refer",
     color: "text-pink-400",
   },

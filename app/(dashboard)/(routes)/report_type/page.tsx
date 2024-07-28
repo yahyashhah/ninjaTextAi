@@ -6,15 +6,16 @@ import { useRouter } from "next/navigation";
 import React from "react";
 import { dashboardConstants } from "./constants";
 import { ArrowRight } from "lucide-react";
+import Link from "next/link";
 
 const Dashboard = () => {
   const router = useRouter();
   return (
     <div>
       <div className="flex flex-col items-start mb-8 px-8">
-        <h2 className="my-4 text-xl md:text-2xl font-bold text-center">
-          Report Type
-        </h2>
+      <h1 className="my-4 bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent text-xl md:text-3xl font-bold text-center mt-6">
+          Report Types
+        </h1>
         <p className="text-muted-foreground font-normal text-sm text-center">
           Select Your Report Type Here
         </p>
@@ -33,7 +34,7 @@ const Dashboard = () => {
                 </div>
                 <div className="font-semibold text-xl">{tool.label}</div>
                 <div className="text-sm">{tool.description}</div>
-                <div className="right-0 text-blue-500 w-full flex items-end"><ArrowRight /></div>
+                <Link href={tool.href} className="right-0 text-blue-500 w-full flex items-end"><ArrowRight /></Link>
               </div>
             </Card>
           </div>

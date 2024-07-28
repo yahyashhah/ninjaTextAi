@@ -1,163 +1,49 @@
 "use client";
 
-import * as z from "zod";
-import { ArrowUp, Mic } from "lucide-react";
-import { useForm } from "react-hook-form";
-import { formSchema, selectTool } from "./constant";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { ChatCompletionMessageParam } from "openai/resources/index.mjs";
-import axios from "axios";
-// import { Empty } from "@/components/empty";
-import { Loader } from "@/components/loader";
+import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useRouter } from "next/navigation";
+import React from "react";
+import { dashboardConstants } from "./constants";
+import { ArrowRight } from "lucide-react";
 
-const Chat = () => {
+const Dashboard = () => {
   const router = useRouter();
-  const [messages, setMessages] = useState<ChatCompletionMessageParam[]>([
-    {
-      role: "system",
-      content:
-        "Hello I am a powerful assiatnt and I will make a report for you",
-    },
-  ]);
-
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      prompt: "",
-    },
-  });
-
-  const isLoading = form.formState.isSubmitting;
-
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
-    try {
-      const userMessage: ChatCompletionMessageParam = {
-        role: "user",
-        content: values.prompt,
-      };
-      console.log(userMessage);
-      const newMessages = [userMessage, ...messages];
-      const response = await axios.post("/api/easylearning", {
-        messages: newMessages,
-      });
-      setMessages((current) => [...current, userMessage, response.data]);
-      form.reset({ prompt: "" });
-    } catch (error: any) {
-      // todo: Open Pro Modal
-      console.log(error);
-    } finally {
-      router.refresh();
-    }
-  };
-
   return (
-    <div className="flex flex-col " style={{ minHeight: "calc(100vh - 90px)" }}>
-      <div className="w-full flex justify-between items-center p-4 bg-white drop-shadow-sm rounded-lg">
-        <h1 className="text-lg font-semibold">AI Narrative</h1>
-        {/* Select tool */}
-        <Select>
-          <SelectTrigger className="w-[280px]">
-            <SelectValue placeholder="Select the Tool" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {selectTool.map((tool) => (
-                <SelectItem value={tool.value}>{tool.name}</SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        {/*  */}
+    <div>
+      <div className="flex flex-col items-center mb-8 px-8 gap-2">
+        <h1 className="my-4 bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent text-xl md:text-5xl font-bold text-center mt-16">
+          CopNarrative
+        </h1>
+        <p className="text-muted-foreground font-normal text-md text-center">
+          Streamline your police reporting with our advanced AI platform. <br />{" "}
+          Easily dictate reports and receive accurate, comprehensive narratives
+          instantly.
+        </p>
+        <p className="text-muted-foreground font-normal text-sm text-center">
+          Select your report type and continue generating your report.
+        </p>
       </div>
-      <div className="px-4 lg:px-8 flex-1">
-        <div className="space-y-4 mt-4">
-          {isLoading && (
-            <div className="p-8 rounded-lg w-full flex items-center justify-center bg-muted">
-              <Loader />
-            </div>
-          )}
-          {/* {messages.length === 0 && !isLoading && (
-            <Empty label="No Conversation Started." />
-          )} */}
-          <div className="flex flex-col-reverse gap-y-4 overflow-y-auto">
-            {messages.map((message, index) => (
-              <div
-                key={index}
-                className={cn(
-                  "p-6 w-full flex items-start gap-x-8 rounded-lg ",
-                  message.role === "user"
-                    ? "bg-white border border-black/10"
-                    : "bg-muted"
-                )}
-              >
-                {/* {message.role === "user" ? <UserAvatar /> : <BotAvatar />} */}
-                <p id="content" className="text-sm">{String(message.content)}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div id="chat-system" className="mt-auto px-4 lg:px-8">
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="
-              rounded-lg 
-              w-full 
-              p-3 
-              md:px-6 
-              flex
-              items-center
-              gap-x-2
-              border-[#5E85FE]
-              border-2
-              dropshadow-lg
-            "
-          >
-            <Mic className="cursor-pointer text-gray-700" />
-            <FormField
-              name="prompt"
-              render={({ field }) => (
-                <FormItem className="w-full">
-                  <FormControl className="m-0 p-0">
-                    <Input
-                      className="p-2 border-0"
-                      disabled={isLoading}
-                      placeholder="Record something or type"
-                      {...field}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-            <Button
-              className="bg-[#5E85FE] hover:bg-[#0A236D]"
-              type="submit"
-              disabled={isLoading}
-              size="icon"
+      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-4 px-2 md:px-32 overflow-scroll lg:overflow-hidden">
+        {dashboardConstants.map((tool, index) => (
+          <div key={index}>
+            <Card
+              onClick={() => router.push(tool.href)}
+              key={tool.href}
+              className="p-4 border-black/4 items-center flex justify-between drop-shadow-lg hover:shadow-md transition cursor-pointer"
             >
-              <ArrowUp className="cursor-pointer" />
-            </Button>
-          </form>
-        </Form>
+              <div className="flex items-center gap-x-4">
+                <div className={cn(`p-4 w-fit rounded-md`, tool.bgColor)}>
+                  <tool.icon className={cn("w-8 h-8", tool.color)} />
+                </div>
+                <div className="font-semibold text-md">{tool.label}</div>
+              </div>
+            </Card>
+          </div>
+        ))}
       </div>
     </div>
   );
 };
 
-export default Chat;
+export default Dashboard;
