@@ -48,3 +48,15 @@ export const filingCabinetFiles = [
         ]
     },
 ]
+
+
+export const colorPing = {
+    "accident": "bg-pink-500",
+    "arrest": "bg-red-500",
+    "use_of_force": "bg-purple-500",
+    "witness": "bg-green-500",
+    "field_interview": "bg-pink-500",
+    "domestic_voilence": "bg-sky-500",
+    "supplemental": "bg-cyan-700",
+    "incident": "bg-yellow-500",
+}

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import React from "react";
 import { dashboardConstants } from "./constants";
-import { ArrowRight } from "lucide-react";
+
 
 const Dashboard = () => {
   const router = useRouter();
@@ -13,7 +13,7 @@ const Dashboard = () => {
     <div>
       <div className="flex flex-col items-center mb-8 px-8 gap-2">
         <h1 className="my-4 bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent text-xl md:text-5xl font-bold text-center mt-16">
-          CopNarrative
+          NinjaText-AI
         </h1>
         <p className="text-muted-foreground font-normal text-md text-center">
           Streamline your police reporting with our advanced AI platform. <br />{" "}

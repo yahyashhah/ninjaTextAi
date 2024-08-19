@@ -7,6 +7,7 @@ import {
   NetworkIcon,
   Folder,
   SendToBack,
+  DollarSign,
 } from "lucide-react";
 
 export const sidebarRoutes = [
@@ -28,12 +29,12 @@ export const sidebarRoutes = [
     href: "/filing_cabinet",
     color: "text-orange-500",
   },
-  {
-    label: "Department Protocols",
-    icon: ImageIcon,
-    href: "/department_protocol",
-    color: "text-pink-700",
-  },
+  // {
+  //   label: "Department Protocols",
+  //   icon: ImageIcon,
+  //   href: "/department_protocol",
+  //   color: "text-pink-700",
+  // },
   {
     label: "Accout Settings",
     icon: UserCircle,
@@ -41,10 +42,15 @@ export const sidebarRoutes = [
     color: "text-green-700",
   },
   {
+    label: "Manage Subscriptions",
+    icon: DollarSign,
+    href: "/manage_subscriptions",
+    color: "text-pink-400",
+  },
+  {
     label: "Refer a friend",
     icon: SendToBack,
     href: "/refer",
     color: "text-pink-400",
   },
-
 ];

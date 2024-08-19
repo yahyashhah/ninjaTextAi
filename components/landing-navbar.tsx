@@ -1,25 +1,36 @@
-import Link from 'next/link'
-import React from 'react'
-import { Button } from './ui/button'
+import Link from "next/link";
+import React from "react";
+import { Button } from "./ui/button";
+import Image from "next/image";
 
 const LandingNavbar = () => {
   return (
-    <div className='flex items-center justify-between p-2'>
-      <div className='flex'>
-        <h1 className='text-xl font-bold'>CopNarrative</h1>
+    <div className="flex items-center justify-between p-3 text-white px-32">
+      <div className="flex">
+        <Image src={'/mainlogo.png'} width={180} height={150} alt="mainlogo" />
       </div>
-      <div className='flex gap-x-12'>
-        <Link className='text-md' href={"/"}>Home</Link>
-        <Link href={"/"}>Pricing</Link>
-        <Link href={"/"}>FAQ's</Link>
-        <Link href={"/"}>Term & Condition</Link>
+      <div className="flex gap-x-12">
+        <Link className="text-md" href={"/"}>
+          Home
+        </Link>
+        <Link href={"/#pricing"}>Pricing</Link>
+        <Link href={"/#faqs"}>FAQ's</Link>
+        <Link href={"/terms"}>Term & Condition</Link>
       </div>
-      <div className='flex gap-x-2'>
-        <Button className='bg-white border-2 border-black text-black hover:text-white'>Sign in</Button>
-        <Button>Sign up</Button>
+      <div className="flex gap-x-4">
+        <Link href={"/sign-in"}>
+          <Button className="ring-1 ring-white hover:bg-white hover:text-black">
+            Sign in
+          </Button>
+        </Link>
+        <Link href={"/sign-up"}>
+        <Button className="bg-gradient-to-r from-sky-600 via-sky-500 to-sky-600 drop-shadow-lg hover:text-black hover:bg-white">
+          Sign up
+        </Button>
+        </Link>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default LandingNavbar
+export default LandingNavbar;

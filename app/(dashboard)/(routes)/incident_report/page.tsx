@@ -1,39 +1,40 @@
 "use client";
 
 import * as z from "zod";
-import { ArrowLeft, ArrowUp, Mic } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useVoiceToText } from "react-speakup";
+import { useRouter } from "next/navigation";
+import axios from "axios";
 import { useForm } from "react-hook-form";
-import { formSchema, selectTool } from "./constant";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
+import { ChatCompletionMessageParam } from "openai/resources/index.mjs";
+
+import { formSchema } from "./constant";
+
+import { ArrowLeft, ArrowUp, Mic, MicOff } from "lucide-react";
+// import { Empty } from "@/components/empty";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { ChatCompletionMessageParam } from "openai/resources/index.mjs";
-import axios from "axios";
-// import { Empty } from "@/components/empty";
+import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Loader } from "@/components/loader";
 import { cn } from "@/lib/utils";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import Editor from "@/components/editor";
+import TextEditor from "@/components/new-editor";
+import { Empty } from "@/components/empty";
 
 const IncidentReport = () => {
   const router = useRouter();
-  const [messages, setMessages] = useState<ChatCompletionMessageParam[]>([
-    {
-      role: "system",
-      content:
-        "Hello I am a powerful assiatnt and I will make a report for you",
-    },
-  ]);
+  const { startListening, stopListening, transcript } = useVoiceToText();
+  const [prompt, setPrompt] = useState("");
+  const [isListening, setIsListening] = useState(false);
+
+  useEffect(() => {
+    if (isListening) {
+      setPrompt(transcript);
+    }
+  }, [transcript, isListening, prompt]);
+
+  const [message, setMessage] = useState("");
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -46,16 +47,11 @@ const IncidentReport = () => {
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
-      const userMessage: ChatCompletionMessageParam = {
-        role: "user",
-        content: values.prompt,
-      };
-      console.log(userMessage);
-      const newMessages = [userMessage, ...messages];
-      const response = await axios.post("/api/easylearning", {
-        messages: newMessages,
-      });
-      setMessages((current) => [...current, userMessage, response.data]);
+      values.prompt = prompt;
+      console.log(values.prompt);
+      const response = await axios.post("/api/incident_report", values);
+      console.log(response.data);
+      setMessage(response.data.content);
       form.reset({ prompt: "" });
     } catch (error: any) {
       // todo: Open Pro Modal
@@ -67,39 +63,42 @@ const IncidentReport = () => {
 
   return (
     <div className="flex flex-col " style={{ minHeight: "calc(100vh - 90px)" }}>
-      <div className="w-full flex justify-between items-center p-4 px-10 bg-white drop-shadow-sm rounded-lg">
-        <ArrowLeft className="cursor-pointer hover:animate-pulse" onClick={() => router.back()} />
-        <h1 className="text-lg font-semibold bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent">Incident Report</h1>
+      <div className="w-full flex justify-between items-center p-4 px-10 bg-white drop-shadow-md rounded-lg">
+        <ArrowLeft
+          className="cursor-pointer hover:animate-pulse"
+          onClick={() => router.back()}
+        />
+        <h1 className="text-lg font-semibold bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent">
+          Incident Report
+        </h1>
       </div>
-      <div className="px-4 lg:px-8 flex-1">
+      <div className="px-4 lg:px-8 flex-1 py-4">
         <div className="space-y-4 mt-4">
           {isLoading && (
             <div className="p-8 rounded-lg w-full flex items-center justify-center bg-muted">
               <Loader />
             </div>
           )}
-          {/* {messages.length === 0 && !isLoading && (
-            <Empty label="No Conversation Started." />
-          )} */}
-          <div className="flex flex-col-reverse gap-y-4 overflow-y-auto">
-            {messages.map((message, index) => (
+          {message.length === 0 && !isLoading && (
+            <Empty label="Let's Generate Incident Report!" />
+          )}
+          <div className="flex flex-col-reverse gap-y-4 ">
+            {message.length > 0 && (
               <div
-                key={index}
                 className={cn(
-                  "p-6 w-full flex items-start gap-x-8 rounded-lg ",
-                  message.role === "user"
-                    ? "bg-white border border-black/10"
-                    : "bg-muted"
+                  "p-6 w-full flex items-start gap-x-8 rounded-lg bg-sky-200"
                 )}
               >
-                {/* {message.role === "user" ? <UserAvatar /> : <BotAvatar />} */}
-                <p id="content" className="text-sm">{String(message.content)}</p>
+                <TextEditor text={message} tag="incident" />
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
-      <div id="chat-system" className="mt-auto px-4 lg:px-8">
+      <div
+        id="chat-system"
+        className="mt-auto bg-white px-4 lg:px-8 relative bottom-4"
+      >
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
@@ -116,17 +115,35 @@ const IncidentReport = () => {
               dropshadow-lg
             "
           >
-            <Mic className="cursor-pointer text-gray-700" />
+            {isListening === false ? (
+              <Mic
+                className="cursor-pointer text-[#3a68f1] text-xl font-extrabold"
+                onClick={() => {
+                  startListening();
+                  setIsListening(true);
+                }}
+              />
+            ) : (
+              <MicOff
+                className="cursor-pointer text-[#3a68f1] animate-ping text-md"
+                onClick={() => {
+                  stopListening();
+                  setIsListening(false);
+                }}
+              />
+            )}
+
             <FormField
               name="prompt"
-              render={({ field }) => (
+              render={() => (
                 <FormItem className="w-full">
                   <FormControl className="m-0 p-0">
                     <Input
                       className="p-2 border-0"
                       disabled={isLoading}
                       placeholder="Record something or type"
-                      {...field}
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
                     />
                   </FormControl>
                 </FormItem>

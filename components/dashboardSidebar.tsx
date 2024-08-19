@@ -7,20 +7,26 @@ import { Montserrat } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import FreeCounter from "./free-counter";
 // import FreeCounter from "./free-counter";
 
 const monserrat = Montserrat({ weight: "600", subsets: ["latin"] });
 
-const Sidebar = () => {
+interface SideBarProps {
+  apiLimitCount: number;
+  isPro: boolean;
+}
+
+const Sidebar = ({ apiLimitCount = 0, isPro = false }: SideBarProps) => {
   const pathname = usePathname();
   return (
     <div className="space-y-4 py-3 flex flex-col h-full bg-[#161717] text-white drop-shadow-xl">
       <div className="px-2 py-2">
         <Link
-          href="/dashboard"
-          className="flex justify-center mb-6 text-xl font-bold"
+          href="/chat"
+          className="flex justify-center mb-2 text-xl font-bold"
         >
-          Cop - Narrative
+        <Image src={'/mainlogo.png'} width={180} height={150} alt="mainlogo" />
         </Link>
 
         {sidebarRoutes.map((route) => (
@@ -34,13 +40,26 @@ const Sidebar = () => {
                 : "text-white rounded-lg"
             )}
           >
-            <div className={cn("flex items-center flex-1", pathname === route.href ? "text-white font-semibold" : "font-normal")}>
-              <route.icon className={cn("h-5 w-5 mr-3 ",pathname === route.href ? "text-[#5E85FE]" : "text-gray-500" )} />
-              {route.label}     
+            <div
+              className={cn(
+                "flex items-center flex-1",
+                pathname === route.href
+                  ? "text-white font-semibold"
+                  : "font-normal"
+              )}
+            >
+              <route.icon
+                className={cn(
+                  "h-5 w-5 mr-3 ",
+                  pathname === route.href ? "text-[#5E85FE]" : "text-gray-500"
+                )}
+              />
+              {route.label}
             </div>
           </Link>
         ))}
       </div>
+      <FreeCounter isPro={isPro} apiLimitCount={apiLimitCount} />
     </div>
   );
 };
