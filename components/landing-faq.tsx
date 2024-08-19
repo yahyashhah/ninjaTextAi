@@ -20,7 +20,18 @@ const LandingFAQs = () => {
             <AccordionItem key={index} value={"question"+index}>
               <AccordionTrigger>{faq.question}</AccordionTrigger>
               <AccordionContent>
-                {faq.answer}
+
+                {faq.answer === "We offer support with a 24-hour turnaround when you email us at ninjatextAI@gmail.com." ? (
+                  <a
+                  href="mailto:ninjatextAI@gmail.com"
+                  className=""
+                  target="_blank"
+                  
+                >
+                  We offer support with a 24-hour turnaround when you email us at ninjatextAI@gmail.com.
+                </a>
+                ):
+                faq.answer}
               </AccordionContent>
             </AccordionItem>
           ))}
