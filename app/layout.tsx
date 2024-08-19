@@ -3,12 +3,11 @@ import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { ModalProvider } from "@/components/modal-provider";
-import { Toaster } from "@/components/ui/toaster";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Cop Narrative",
+  title: "NinjaText-AI",
   description: "Generate Reports",
 };
 
