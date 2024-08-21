@@ -14,22 +14,24 @@ import Link from "next/link";
 
 const LandingPricing = () => {
   return (
-    <div id="pricing" className="bg-white">
-      <div className="px-32 h-fit">
-        <div className="flex flex-col bg-[#EFF2FB] p-4 rounded-3xl items-center justify-center text-center gap-y-8 drop-shadow-lg">
-          <p className="text-gray-500 font-semibold mt-6">Plans and Pricing</p>
-          <h1 className="text-3xl font-bold text-black px-48">
+    <div id="pricing" className="bg-white py-8">
+      <div className="px-4 sm:px-8 md:px-16 lg:px-32">
+        <div className="flex flex-col bg-[#EFF2FB] p-6 md:p-8 lg:p-12 rounded-3xl items-center justify-center text-center gap-y-8 drop-shadow-lg">
+          <p className="text-gray-500 font-semibold text-sm md:text-base mt-4">
+            Plans and Pricing
+          </p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-black px-4 md:px-12 lg:px-48">
             Choose your plan: flexible upgrades, downgrades, and easy
             cancellations.
           </h1>
 
-          <div className="flex items-center  gap-x-12 mb-12">
+          <div className="flex flex-col md:flex-row gap-6 md:gap-8 lg:gap-12 mb-12">
             {plans.map((plan, index) => (
               <Card
                 key={index}
                 className={cn(
-                  plan.tag === "Free" ? "" : "bg-black text-white space-y-4",
-                  "text-left drop-shadow-xl px-3 pl-4 pr-12 h-fit rounded-3xl"
+                  plan.tag === "Free" ? "bg-white text-black" : "bg-black text-white",
+                  "text-left drop-shadow-xl px-4 py-6 md:px-6 md:py-8 lg:px-8 lg:py-10 h-fit rounded-3xl"
                 )}
               >
                 <CardHeader>
@@ -43,12 +45,14 @@ const LandingPricing = () => {
                   >
                     {plan.tag}
                   </div>
-                  <CardTitle className="text-3xl font-bold">
+                  <CardTitle className="text-2xl sm:text-3xl md:text-4xl font-bold">
                     {plan.price}
                   </CardTitle>
-                  <CardDescription>{plan.line}</CardDescription>
+                  <CardDescription className="text-sm md:text-base">
+                    {plan.line}
+                  </CardDescription>
                 </CardHeader>
-                <CardContent className="flex flex-col gap-y-4">
+                <CardContent className="flex flex-col gap-y-2 md:gap-y-4">
                   {plan.description.map((desc, index) => (
                     <p
                       key={index}
@@ -56,7 +60,7 @@ const LandingPricing = () => {
                         plan.tag === "Free"
                           ? "border-gray-200"
                           : "border-gray-700",
-                        "text-sm font-medium border-b-2  pb-2"
+                        "text-sm font-medium border-b-2 pb-2"
                       )}
                     >
                       {desc}
@@ -67,11 +71,11 @@ const LandingPricing = () => {
                   <Link href={"/sign-up"}>
                     <Button
                       className={cn(
-                        plan.tag === "Free" ? "" : "bg-sky-600",
+                        plan.tag === "Free" ? "bg-gray-300 text-black" : "bg-sky-600",
                         "drop-shadow-md"
                       )}
                     >
-                     {plan.tag === "Oraginzation" ? "Book a Demo" : "Buy Now"} 
+                      {plan.tag === "Organization" ? "Book a Demo" : "Buy Now"}
                     </Button>
                   </Link>
                 </CardFooter>

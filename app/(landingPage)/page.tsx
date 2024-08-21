@@ -9,9 +9,9 @@ import LandingPricing from "@/components/landing-pricing";
 export default function Home() {
   return (
     <>
-      <div className="relative h-full w-full bg-slate-950">
-        <div className="rounded-full bg-[radial-gradient(circle_farthest-side,rgba(255,0,182,.15),rgba(255,255,255,0))]"></div>
-        <div className="bottom-0 top-[-10%] h-full rounded-full bg-[radial-gradient(circle_farthest-side,rgba(255,0,182,.15),rgba(255,255,255,0))]">
+      <div className="relative min-h-screen w-full bg-slate-950">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_farthest-side,rgba(255,0,182,.15),rgba(255,255,255,0))] rounded-full"></div>
+        <div className="relative z-10">
           <LandingNavbar />
           <LandingHero />
           <LandingFeatures />

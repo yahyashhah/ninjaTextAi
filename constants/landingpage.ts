@@ -115,3 +115,10 @@ export const footerAccess = [
     href: "/sign-up",
   },
 ];
+
+export const navItems = [
+  { label: "Home", href: "/#home" },
+  { label: "Features", href: "/#features" },
+  { label: "Pricing", href: "/#pricing" },
+  { label: "FAQs", href: "/#faqs" },
+];
