@@ -43,14 +43,10 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
     const span = document.createElement("span");
     span.style.cssText = style;
 
-    // Extract the selected contents and append them to the span
     span.appendChild(range.extractContents());
-    // Insert the span back in the range position
     range.insertNode(span);
 
-    // Deselect the selected range
     selection.removeAllRanges();
-    // Create a new range to select the span
     const newRange = document.createRange();
     newRange.selectNodeContents(span);
     selection.addRange(newRange);
@@ -105,12 +101,13 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
   const handleDownloadTxt = () => {
     const content = contentRef.current;
     if (!content) return;
-    const blob = new Blob([content.innerText]);
+    const blob = new Blob([content.innerText], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = "untitled.txt";
     link.click();
+    URL.revokeObjectURL(url); // Clean up after download
   };
 
   const handleSave = async () => {
@@ -144,8 +141,18 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(text);
+      toast({
+        variant: "default",
+        title: "Copied",
+        description: "Text copied to clipboard",
+      });
     } catch (error) {
       console.error("Unable to copy to clipboard:", error);
+      toast({
+        variant: "destructive",
+        title: "Copy Failed",
+        description: "Failed to copy text",
+      });
     }
   };
 
@@ -156,32 +163,28 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
   };
 
   return (
-    <div className="container mx-auto p-4 bg-white rounded-lg shadow">
+    <div className="container mx-auto p-4 bg-white rounded-lg shadow-lg">
       <div className="toolbar mb-4 flex flex-wrap gap-2">
         <input
           type="text"
           placeholder="Filename"
-          className="border p-2 rounded"
+          className="border p-2 rounded w-full md:w-1/2 lg:w-1/3"
           onChange={(e) => setReportName(e.target.value)}
         />
         <Dialog>
           <DialogTrigger asChild>
-            <Button className="bg-sky-500 drop-shadow-md">Save File</Button>
+            <Button className="bg-sky-500 hover:bg-sky-600 text-white">Save File</Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
-              <DialogTitle>Edit profile</DialogTitle>
+              <DialogTitle>Edit Report</DialogTitle>
               <DialogDescription className="mt-2">
-                This is an AI Generated report. Before saving file make sure the
-                generated report is correct.
-                <br />
-                If you have made changes and the report is correct. Please click
-                on save button to save file.
+                This is an AI-generated report. Ensure the report is correct before saving. If you have made changes and the report is accurate, please click save.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button
-                className="bg-sky-500 drop-shadow-md"
+                className="bg-sky-500 hover:bg-sky-600 text-white"
                 onClick={handleSave}
               >
                 Save File
@@ -190,31 +193,31 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
           </DialogContent>
         </Dialog>
         <Button
-          className="bg-sky-500 drop-shadow-md"
+          className="bg-sky-500 hover:bg-sky-600 text-white"
           onClick={handleDownloadTxt}
         >
           Download File
         </Button>
-        <Button className="bg-sky-500 drop-shadow-md" onClick={handlePrint}>
+        <Button className="bg-sky-500 hover:bg-sky-600 text-white" onClick={handlePrint}>
           Print
         </Button>
       </div>
-      <div className="flex gap-x-2 mb-4">
+      <div className="flex gap-2 mb-4 flex-wrap">
         <Button
           onClick={() => applyStyle("font-weight: bold;")}
-          className="border p-2 rounded bg-sky-500 drop-shadow-md"
+          className="border p-2 rounded bg-sky-500 hover:bg-sky-600 text-white"
         >
           <BoldIcon />
         </Button>
         <Button
           onClick={() => applyStyle("font-style: italic;")}
-          className="border p-2 rounded bg-sky-500 drop-shadow-md"
+          className="border p-2 rounded bg-sky-500 hover:bg-sky-600 text-white"
         >
           <ItalicIcon />
         </Button>
         <Button
           onClick={() => applyStyle("text-decoration: underline;")}
-          className="border p-2 rounded bg-sky-500 drop-shadow-md"
+          className="border p-2 rounded bg-sky-500 hover:bg-sky-600 text-white"
         >
           <UnderlineIcon />
         </Button>
@@ -223,27 +226,23 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
         <div
           ref={contentRef}
           contentEditable
-          className="border-4 p-4 rounded min-h-[200px] whitespace-pre-wrap"
+          className="border-2 p-4 rounded min-h-[200px] whitespace-pre-wrap"
           onInput={handleInput}
         >
-          {" "}
           <pre className="whitespace-pre-wrap">{text}</pre>
         </div>
       </div>
-
       <Button
-        className="flex items-center gap-x-2 mt-2 bg-sky-500 drop-shadow-md"
+        className="flex items-center gap-x-2 mt-4 bg-sky-500 hover:bg-sky-600 text-white"
         onClick={handleCopy}
       >
         <Copy className="h-5 w-5" /> Copy Text
       </Button>
-
-      <Alert className="mt-2 items-center">
+      <Alert className="mt-4 items-center">
         <TriangleAlertIcon className="h-5 w-5" />
         <AlertTitle>Be Careful!</AlertTitle>
         <AlertDescription>
-          Don't fully relay on AI generated report. Please verify the document
-          before saving it!
+          Verify the AI-generated report before saving it!
         </AlertDescription>
       </Alert>
     </div>

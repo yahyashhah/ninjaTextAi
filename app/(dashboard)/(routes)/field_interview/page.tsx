@@ -7,18 +7,14 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ChatCompletionMessageParam } from "openai/resources/index.mjs";
-
 import { formSchema } from "./constant";
 
 import { ArrowLeft, ArrowUp, Mic, MicOff } from "lucide-react";
-// import { Empty } from "@/components/empty";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Loader } from "@/components/loader";
 import { cn } from "@/lib/utils";
-import Editor from "@/components/editor";
 import TextEditor from "@/components/new-editor";
 import { Empty } from "@/components/empty";
 
@@ -54,7 +50,6 @@ const FieldInterview = () => {
       setMessage(response.data.content);
       form.reset({ prompt: "" });
     } catch (error: any) {
-      // todo: Open Pro Modal
       console.log(error);
     } finally {
       router.refresh();
@@ -62,59 +57,51 @@ const FieldInterview = () => {
   };
 
   return (
-    <div className="flex flex-col " style={{ minHeight: "calc(100vh - 90px)" }}>
-      <div className="w-full flex justify-between items-center p-4 px-10 bg-white drop-shadow-md rounded-lg">
+    <div className="flex flex-col min-h-screen bg-gray-100">
+      <div className="w-full flex justify-between items-center p-4 px-6 bg-white shadow-md rounded-b-lg">
         <ArrowLeft
-          className="cursor-pointer hover:animate-pulse"
+          className="cursor-pointer hover:animate-pulse text-xl"
           onClick={() => router.back()}
         />
         <h1 className="text-lg font-semibold bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent">
-          Field Interview Report
+        Field Interview Report
         </h1>
       </div>
-      <div className="px-4 lg:px-8 flex-1">
-        <div className="space-y-4 mt-4">
+      <div className="px-4 lg:px-8 flex-1 py-4">
+        <div
+          id="message"
+          className="space-y-4 mt-4 overflow-y-auto max-h-[calc(100vh-180px)]" // Adjust max-height as needed
+        >
           {isLoading && (
-            <div className="p-8 rounded-lg w-full flex items-center justify-center bg-muted">
+            <div className="p-8 rounded-lg w-full flex items-center justify-center bg-gray-200">
               <Loader />
             </div>
           )}
           {message.length === 0 && !isLoading && (
-            <Empty label="Let's Generate Field Interview Report!" />
+            <Empty label="Let's Generate Incident Report!" />
           )}
-          <div className="flex flex-col-reverse gap-y-4 overflow-y-auto">
+          <div className="flex flex-col-reverse gap-y-4">
             {message.length > 0 && (
               <div
                 className={cn(
                   "p-6 w-full flex items-start gap-x-8 rounded-lg bg-sky-200"
                 )}
               >
-                <TextEditor text={message} tag="field_interview" />
+                <TextEditor text={message} tag="incident" />
               </div>
             )}
           </div>
         </div>
       </div>
-      <div id="chat-system" className="mt-auto px-4 lg:px-8 relative">
+      <div className="bg-white px-4 lg:px-8 py-2 bottom-0 left-0 w-full flex items-center border-t border-gray-200 shadow-lg">
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="
-              rounded-lg 
-              w-full 
-              p-3 
-              md:px-6 
-              flex
-              items-center
-              gap-x-2
-              border-[#5E85FE]
-              border-2
-              dropshadow-lg
-            "
+            className="w-full flex items-center gap-2 border-2 border-[#5E85FE] rounded-lg p-2 md:p-4"
           >
             {isListening === false ? (
               <Mic
-                className="cursor-pointer text-[#3a68f1] text-xl font-extrabold"
+                className="cursor-pointer text-[#3a68f1] text-xl md:text-2xl"
                 onClick={() => {
                   startListening();
                   setIsListening(true);
@@ -122,7 +109,7 @@ const FieldInterview = () => {
               />
             ) : (
               <MicOff
-                className="cursor-pointer text-[#3a68f1] animate-ping text-md"
+                className="cursor-pointer text-[#3a68f1] text-xl md:text-2xl animate-ping"
                 onClick={() => {
                   stopListening();
                   setIsListening(false);
@@ -147,12 +134,12 @@ const FieldInterview = () => {
               )}
             />
             <Button
-              className="bg-[#5E85FE] hover:bg-[#0A236D]"
+              className="bg-[#5E85FE] hover:bg-[#0A236D] text-white"
               type="submit"
               disabled={isLoading}
               size="icon"
             >
-              <ArrowUp className="cursor-pointer" />
+              <ArrowUp className="text-xl" />
             </Button>
           </form>
         </Form>
