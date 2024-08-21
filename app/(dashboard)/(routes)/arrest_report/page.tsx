@@ -57,7 +57,7 @@ const ArrestReport = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-100">
+    <div className="flex flex-col h-[calc(100vh-74px)] bg-gray-100">
       <div className="w-full flex justify-between items-center p-4 px-6 bg-white shadow-md rounded-b-lg">
         <ArrowLeft
           className="cursor-pointer hover:animate-pulse text-xl"

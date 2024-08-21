@@ -1,15 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-// import {
-//   Accordion,
-//   AccordionContent,
-//   AccordionItem,
-//   AccordionTrigger,
-// } from "@/components/ui/accordion";
 import { Card } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
-import { colorPing, filingCabinetFiles } from "./constants";
 import axios from "axios";
 import { FileIcon, SearchIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -22,7 +15,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -40,6 +32,7 @@ const FilingCabinet = () => {
   const router = useRouter();
   const [reports, setReports] = useState<report>([]);
   const [byName, setByName] = useState("");
+
   const getAllReports = async () => {
     try {
       const response = await axios.get("/api/get_all_reports");
@@ -48,58 +41,22 @@ const FilingCabinet = () => {
       console.log(error);
     }
   };
+
   useEffect(() => {
     getAllReports();
   }, []);
 
   const handleChange = async (value: string) => {
-    if (value === "incident") {
-      const response = await axios.post("/api/filter_reports", {
-        tag: "incident",
-      });
-      setReports(response.data.reports);
-    } else if (value === "accident") {
-      const response = await axios.post("/api/filter_reports", {
-        tag: "accident",
-      });
-      setReports(response.data.reports);
-    } else if (value === "use_of_force") {
-      const response = await axios.post("/api/filter_reports", {
-        tag: "use_of_force",
-      });
-      setReports(response.data.reports);
-    } else if (value === "supplemental") {
-      const response = await axios.post("/api/filter_reports", {
-        tag: "supplemental",
-      });
-      setReports(response.data.reports);
-    } else if (value === "field_interview") {
-      const response = await axios.post("/api/filter_reports", {
-        tag: "field_interview",
-      });
-      setReports(response.data.reports);
-    } else if (value === "arrest") {
-      const response = await axios.post("/api/filter_reports", {
-        tag: "arrest",
-      });
-      setReports(response.data.reports);
-    } else if (value === "domestic_voilence") {
-      const response = await axios.post("/api/filter_reports", {
-        tag: "domestic_voilence",
-      });
-      setReports(response.data.reports);
-    } else if (value === "witness") {
-      const response = await axios.post("/api/filter_reports", {
-        tag: "witness",
-      });
-      setReports(response.data.reports);
-    } else {
-      try {
+    try {
+      if (value === "all") {
         const response = await axios.get("/api/get_all_reports");
         setReports(response.data.reports);
-      } catch (error) {
-        console.log(error);
+      } else {
+        const response = await axios.post("/api/filter_reports", { tag: value });
+        setReports(response.data.reports);
       }
+    } catch (error) {
+      console.log(error);
     }
   };
 
@@ -115,8 +72,8 @@ const FilingCabinet = () => {
   };
 
   return (
-    <div className="h-screen">
-      <div className="flex flex-col items-start mb-8 px-8 gap-2 ">
+    <div className="min-h-screen bg-white p-4 md:p-8">
+      <div className="flex flex-col items-start mb-8 px-2 md:px-8 gap-2">
         <h1 className="my-2 bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent text-xl md:text-3xl font-bold text-center mt-6">
           Filing Cabinet
         </h1>
@@ -124,10 +81,10 @@ const FilingCabinet = () => {
           See all your files here!
         </p>
       </div>
-      <div className="flex justify-between px-8 mb-4 right-2 relative">
+      <div className="flex flex-col md:flex-row justify-between items-center px-2 md:px-8 mb-4 gap-4">
         <select
           onChange={(e) => handleChange(e.target.value)}
-          className="border p-2 rounded-lg px-2"
+          className="border p-2 rounded-lg w-full md:w-auto"
         >
           <option value="" disabled selected>
             Filter Reports
@@ -135,7 +92,7 @@ const FilingCabinet = () => {
           <option value="all">All</option>
           <option value="incident">Incident Report</option>
           <option value="arrest">Arrest Report</option>
-          <option value="domestic_voilence">Domestic Voilence Report</option>
+          <option value="domestic_voilence">Domestic Violence Report</option>
           <option value="accident">Accident Report</option>
           <option value="supplemental">Supplemental Report</option>
           <option value="use_of_force">Use of Force Report</option>
@@ -143,9 +100,9 @@ const FilingCabinet = () => {
           <option value="field_interview">Field Interview Report</option>
         </select>
 
-        <div className="flex gap-x-2">
+        <div className="flex gap-x-2 w-full md:w-auto">
           <Input
-            className="w-fit"
+            className="w-full md:w-auto"
             placeholder="Search by filename"
             onChange={(e) => setByName(e.target.value)}
           />
@@ -154,34 +111,18 @@ const FilingCabinet = () => {
           </Button>
         </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-4 px-2 md:px-12 overflow-scroll lg:overflow-hidden">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 px-2 md:px-12 overflow-y-auto">
         {reports.length === 0 && (
           <h1 className="text-lg font-bold">No file saved yet</h1>
         )}
 
         {reports.map((report, index) => (
           <div key={index}>
-            {/* <span className="relative align-baseline flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-500 opacity-85"></span>
-              <span
-                className={cn(
-                  "absolute inline-flex rounded-full h-3 w-3 bg-sky-500",
-                  report.tag === "incident" && "bg-yellow-300",
-                  report.tag === "accident" && "bg-pink-500",
-                  report.tag === "arrest" && "bg-red-500",
-                  report.tag === "use_of_force" && "bg-purple-500",
-                  report.tag === "domestic_voilence" && "bg-sky-500",
-                  report.tag === "witness" && "bg-green-500",
-                  report.tag === "supplemental" && "bg-cyan-800"
-                )}
-              ></span>
-            </span> */}
             <Dialog>
               <DialogTrigger asChild>
                 <Card
                   key={index}
                   className="p-4 border-black/2 bg-gray-100 flex flex-col justify-between drop-shadow-lg hover:shadow-md transition cursor-pointer"
-                  // onClick={}
                 >
                   <div className="flex items-center gap-x-4">
                     <div
@@ -233,12 +174,11 @@ const FilingCabinet = () => {
                 </div>
                 <DialogFooter className="sm:justify-start">
                   <Button
-                    className=""
                     onClick={() => {
                       localStorage.setItem("id", report.id);
                       localStorage.setItem("text", report.reportText);
                       localStorage.setItem("name", report.reportName);
-                      router.push("/filing_cabinet/view_report")
+                      router.push("/filing_cabinet/view_report");
                     }}
                   >
                     Edit

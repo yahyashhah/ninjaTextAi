@@ -25,10 +25,10 @@ import {
 interface EditorProps {
   text: string;
   id: string;
-  name: string
+  name: string;
 }
 
-const TextEditor = ({ text = "", id = "", name="" }: EditorProps) => {
+const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const [reportName, setReportName] = useState("");
   const [documentText, setDocumentText] = useState("");
@@ -36,8 +36,8 @@ const TextEditor = ({ text = "", id = "", name="" }: EditorProps) => {
   const { toast } = useToast();
 
   useEffect(() => {
-    setReportName(name)
-  }, [])
+    setReportName(name);
+  }, []);
 
   const applyStyle = (style: string) => {
     const selection = window.getSelection();
@@ -48,14 +48,10 @@ const TextEditor = ({ text = "", id = "", name="" }: EditorProps) => {
     const span = document.createElement("span");
     span.style.cssText = style;
 
-    // Extract the selected contents and append them to the span
     span.appendChild(range.extractContents());
-    // Insert the span back in the range position
     range.insertNode(span);
 
-    // Deselect the selected range
     selection.removeAllRanges();
-    // Create a new range to select the span
     const newRange = document.createRange();
     newRange.selectNodeContents(span);
     selection.addRange(newRange);
@@ -138,26 +134,29 @@ const TextEditor = ({ text = "", id = "", name="" }: EditorProps) => {
 
   return (
     <div className="container mx-auto p-4 bg-white rounded-lg shadow">
-      <div className="mb-4 flex flex-wrap items-center gap-x-4">
-        <p className="font-semibold text-md">Name: {name}</p>
+      <div className="mb-4 flex flex-wrap items-center gap-2 sm:gap-4">
+        <p className="font-semibold text-sm sm:text-md">Name: {name}</p>
+        <br />
         <Dialog>
           <DialogTrigger asChild>
-            <Button className="bg-sky-500 drop-shadow-md">Update File</Button>
+            <Button className="bg-sky-500 drop-shadow-md text-xs sm:text-base">
+              Update File
+            </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-[425px] w-full">
             <DialogHeader>
-              <DialogTitle>Edit profile</DialogTitle>
+              <DialogTitle>Edit Profile</DialogTitle>
               <DialogDescription className="mt-2">
-                This is an AI Generated report. Before saving file make sure the
+                This is an AI Generated report. Before saving the file, make sure the
                 generated report is correct.
                 <br />
-                If you have made changes and the report is correct. Please click
-                on save button to save file.
+                If you have made changes and the report is correct, please click
+                on the save button to save the file.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button
-                className="bg-sky-500 drop-shadow-md"
+                className="bg-sky-500 drop-shadow-md w-full sm:w-auto"
                 onClick={handleSave}
               >
                 Update File
@@ -166,31 +165,34 @@ const TextEditor = ({ text = "", id = "", name="" }: EditorProps) => {
           </DialogContent>
         </Dialog>
         <Button
-          className="bg-sky-500 drop-shadow-md"
+          className="bg-sky-500 drop-shadow-md text-xs sm:text-base"
           onClick={handleDownloadTxt}
         >
           Download File
         </Button>
-        <Button className="bg-sky-500 drop-shadow-md" onClick={handlePrint}>
+        <Button
+          className="bg-sky-500 drop-shadow-md text-xs sm:text-base"
+          onClick={handlePrint}
+        >
           Print
         </Button>
       </div>
-      <div className="flex gap-x-2 mb-4">
+      <div className="flex gap-1 sm:gap-2 mb-4">
         <Button
           onClick={() => applyStyle("font-weight: bold;")}
-          className="border p-2 rounded bg-sky-500 drop-shadow-md"
+          className="border p-1 sm:p-2 rounded bg-sky-500 drop-shadow-md"
         >
           <BoldIcon />
         </Button>
         <Button
           onClick={() => applyStyle("font-style: italic;")}
-          className="border p-2 rounded bg-sky-500 drop-shadow-md"
+          className="border p-1 sm:p-2 rounded bg-sky-500 drop-shadow-md"
         >
           <ItalicIcon />
         </Button>
         <Button
           onClick={() => applyStyle("text-decoration: underline;")}
-          className="border p-2 rounded bg-sky-500 drop-shadow-md"
+          className="border p-1 sm:p-2 rounded bg-sky-500 drop-shadow-md"
         >
           <UnderlineIcon />
         </Button>
@@ -202,23 +204,22 @@ const TextEditor = ({ text = "", id = "", name="" }: EditorProps) => {
           className="border-4 p-4 rounded min-h-[200px] whitespace-pre-wrap"
           onInput={handleInput}
         >
-          {" "}
           <pre className="whitespace-pre-wrap">{text}</pre>
         </div>
       </div>
 
       <Button
-        className="flex items-center gap-x-2 mt-2 bg-sky-500 drop-shadow-md"
+        className="flex items-center gap-2 mt-2 bg-sky-500 drop-shadow-md text-xs sm:text-base"
         onClick={handleCopy}
       >
-        <Copy className="h-5 w-5" /> Copy Text
+        <Copy className="h-4 w-4 sm:h-5 sm:w-5" /> Copy Text
       </Button>
 
       <Alert className="mt-2 items-center">
-        <TriangleAlertIcon className="h-5 w-5" />
-        <AlertTitle>Be Careful!</AlertTitle>
-        <AlertDescription>
-          All the changes will be saved in filing cabinet!
+        <TriangleAlertIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+        <AlertTitle className="text-xs sm:text-base">Be Careful!</AlertTitle>
+        <AlertDescription className="text-xs sm:text-sm">
+          All the changes will be saved in the filing cabinet!
         </AlertDescription>
       </Alert>
     </div>
