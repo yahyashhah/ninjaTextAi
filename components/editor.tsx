@@ -21,6 +21,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "./ui/input";
 
 interface EditorProps {
   text: string;
@@ -32,6 +33,8 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const [reportName, setReportName] = useState("");
   const [documentText, setDocumentText] = useState("");
+  const [confirmName, setConfirmName] = useState("");
+  const [confirmCopy, setConfirmCopy] = useState("");
   const printRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -121,6 +124,12 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(text);
+      setConfirmCopy("")
+      toast({
+        variant: "default",
+        title: "Copied",
+        description: "Text copied to clipboard",
+      });
     } catch (error) {
       console.error("Unable to copy to clipboard:", error);
     }
@@ -145,18 +154,23 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
           </DialogTrigger>
           <DialogContent className="sm:max-w-[425px] w-full">
             <DialogHeader>
-              <DialogTitle>Edit Profile</DialogTitle>
+              <DialogTitle>
+                Are you sure you want to update the report?
+              </DialogTitle>
               <DialogDescription className="mt-2">
-                This is an AI Generated report. Before saving the file, make sure the
-                generated report is correct.
                 <br />
-                If you have made changes and the report is correct, please click
-                on the save button to save the file.
+                Write <span className="font-bold">{name}</span> in the textbox:
+                <Input
+                  onChange={(e) => setConfirmName(e.target.value)}
+                  className="mt-4"
+                  placeholder="Please write here!"
+                />
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button
                 className="bg-sky-500 drop-shadow-md w-full sm:w-auto"
+                disabled={name === confirmName ? false : true}
                 onClick={handleSave}
               >
                 Update File
@@ -208,12 +222,36 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
         </div>
       </div>
 
-      <Button
-        className="flex items-center gap-2 mt-2 bg-sky-500 drop-shadow-md text-xs sm:text-base"
-        onClick={handleCopy}
-      >
-        <Copy className="h-4 w-4 sm:h-5 sm:w-5" /> Copy Text
-      </Button>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button className="flex items-center gap-x-2 mt-4 bg-sky-500 hover:bg-sky-600 text-white">
+            <Copy className="h-5 w-5" /> Copy Report
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Are you sure you want to copy the report?</DialogTitle>
+            <DialogDescription className="mt-2">
+              <br />
+              Write <span className="font-bold">{reportName}</span> below.
+              <Input
+                onChange={(e) => setConfirmCopy(e.target.value)}
+                className="mt-4"
+                placeholder="Please write here!"
+              />
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              className="bg-sky-500 hover:bg-sky-600 text-white"
+              onClick={handleCopy}
+              disabled={name === confirmCopy ? false : true}
+            >
+              <Copy className="h-5 w-5 flex items-center gap-x-2" /> Copy Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Alert className="mt-2 items-center">
         <TriangleAlertIcon className="h-4 w-4 sm:h-5 sm:w-5" />

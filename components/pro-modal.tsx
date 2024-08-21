@@ -59,7 +59,7 @@ export const ProModal = () => {
         <DialogHeader>
           <DialogTitle className="flex justify-center items-center flex-col gap-y-4 pb-2">
             <div className="flex items-center gap-x-2 font-bold py-1 text-white">
-              Upgrade to CopNarrative
+              Upgrade to NinjaText-AI
               <Badge className=" uppercase text-sm py-1 bg-gradient-to-r from-indigo-600 via-purple-400 to-pink-600">
                 Pro
               </Badge>

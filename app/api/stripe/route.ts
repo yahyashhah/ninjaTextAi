@@ -41,7 +41,7 @@ export async function GET() {
             currency: "USD",
             product_data: {
               name: "CopNarrative Pro",
-              description: "Unlimited CopNarrative Generations",
+              description: "Unlimited NinjaText-AI Report Generations",
             },
             unit_amount: 3999,
             recurring: {

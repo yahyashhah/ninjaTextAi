@@ -21,6 +21,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "./ui/input";
 
 interface EditorProps {
   text: string;
@@ -31,6 +32,8 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const [reportName, setReportName] = useState("");
   const [documentText, setDocumentText] = useState("");
+  const [confirmName, setConfirmName] = useState("");
+  const [confirmCopy, setConfirmCopy] = useState("");
   const printRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -141,6 +144,7 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(text);
+      setConfirmCopy("")
       toast({
         variant: "default",
         title: "Copied",
@@ -173,19 +177,30 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
         />
         <Dialog>
           <DialogTrigger asChild>
-            <Button className="bg-sky-500 hover:bg-sky-600 text-white">Save File</Button>
+            <Button className="bg-sky-500 hover:bg-sky-600 text-white">
+              Save File
+            </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
-              <DialogTitle>Edit Report</DialogTitle>
+              <DialogTitle>
+                Are you sure you want to save the report?
+              </DialogTitle>
               <DialogDescription className="mt-2">
-                This is an AI-generated report. Ensure the report is correct before saving. If you have made changes and the report is accurate, please click save.
+                <br />
+                Write <span className="font-bold">{reportName}</span> below.
+                <Input
+                  onChange={(e) => setConfirmName(e.target.value)}
+                  className="mt-4"
+                  placeholder="Please write here!"
+                />
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button
                 className="bg-sky-500 hover:bg-sky-600 text-white"
                 onClick={handleSave}
+                disabled={reportName === confirmName ? false : true}
               >
                 Save File
               </Button>
@@ -198,7 +213,10 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
         >
           Download File
         </Button>
-        <Button className="bg-sky-500 hover:bg-sky-600 text-white" onClick={handlePrint}>
+        <Button
+          className="bg-sky-500 hover:bg-sky-600 text-white"
+          onClick={handlePrint}
+        >
           Print
         </Button>
       </div>
@@ -232,12 +250,39 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
           <pre className="whitespace-pre-wrap">{text}</pre>
         </div>
       </div>
-      <Button
-        className="flex items-center gap-x-2 mt-4 bg-sky-500 hover:bg-sky-600 text-white"
-        onClick={handleCopy}
-      >
-        <Copy className="h-5 w-5" /> Copy Text
-      </Button>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button
+            className="flex items-center gap-x-2 mt-4 bg-sky-500 hover:bg-sky-600 text-white"
+          >
+            <Copy className="h-5 w-5" /> Copy Report
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Are you sure you want to copy the report?</DialogTitle>
+            <DialogDescription className="mt-2">
+              <br />
+              Write <span className="font-bold">{reportName}</span> below.
+              <Input
+                onChange={(e) => setConfirmCopy(e.target.value)}
+                className="mt-4"
+                placeholder="Please write here!"
+              />
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              className="bg-sky-500 hover:bg-sky-600 text-white"
+              onClick={handleCopy}
+              disabled={reportName === confirmCopy ? false : true}
+            >
+              <Copy className="h-5 w-5 flex items-center gap-x-2" /> Copy Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Alert className="mt-4 items-center">
         <TriangleAlertIcon className="h-5 w-5" />
         <AlertTitle>Be Careful!</AlertTitle>
