@@ -1,10 +1,10 @@
 import {
-  ImageIcon,
+  // ImageIcon,
   MessageCirclePlus,
-  File,
-  BoxIcon,
+  // File,
+  // BoxIcon,
   UserCircle,
-  NetworkIcon,
+  // NetworkIcon,
   Folder,
   SendToBack,
   DollarSign,
@@ -17,12 +17,12 @@ export const sidebarRoutes = [
     href: "/chat",
     color: "text-sky-500",
   },
-  {
-    label: "Reports Type",
-    icon: File,
-    href: "/report_type",
-    color: "text-violet-500",
-  },
+  // {
+  //   label: "Reports Type",
+  //   icon: File,
+  //   href: "/report_type",
+  //   color: "text-violet-500",
+  // },
   {
     label: "Filing Cabinet",
     icon: Folder,

@@ -5,8 +5,8 @@ const Settings = async () => {
   const isPro = await checkSubscription();
 
   return (
-    <div>
-      <div className="flex flex-col items-start mb-8 px-8 gap-2">
+    <div className="min-h-screen bg-white">
+      <div className="flex flex-col items-start  mb-8 px-8 gap-2">
         <h1 className="my-2 bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent text-xl md:text-3xl font-bold text-center mt-6">
           CopNarrative Subscription
         </h1>

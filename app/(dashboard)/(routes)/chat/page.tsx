@@ -5,6 +5,12 @@ import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import React from "react";
 import { dashboardConstants } from "./constants";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 const Dashboard = () => {
   const router = useRouter();
@@ -25,6 +31,9 @@ const Dashboard = () => {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 px-4 md:px-8 lg:px-16">
         {dashboardConstants.map((tool, index) => (
+          <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
           <Card
             key={index}
             onClick={() => router.push(tool.href)}
@@ -37,6 +46,12 @@ const Dashboard = () => {
               <div className="font-semibold text-sm md:text-md">{tool.label}</div>
             </div>
           </Card>
+          </TooltipTrigger>
+        <TooltipContent>
+          <p className="w-52">{tool.tip}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
         ))}
       </div>
     </div>
