@@ -16,13 +16,15 @@ const LandingPricing = () => {
   return (
     <div id="pricing" className="bg-white py-8">
       <div className="px-4 sm:px-8 md:px-16 lg:px-32">
-        <div className="flex flex-col bg-[#EFF2FB] p-6 md:p-8 lg:p-12 rounded-3xl items-center justify-center text-center gap-y-8 drop-shadow-lg">
-          <p className="text-gray-500 font-semibold text-sm md:text-base mt-4">
+        <div className="flex flex-col bg-[#EFF2FB] p-6 md:p-8 lg:p-12 rounded-3xl items-center justify-center text-center gap-y-4 drop-shadow-lg">
+          <h5 className="w-fit px-4 text-black font-normal bg-white rounded-xl shadow-lg">
             Plans and Pricing
-          </p>
-          <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-black px-4 md:px-12 lg:px-48">
-            Choose your plan: flexible upgrades, downgrades, and easy
-            cancellations.
+          </h5>
+          <h1 className="text-xl sm:text- md:text-3xl lg:text-4xl font-bold text-black px-4 md:px-12 lg:px-22">
+            Choose Your Plan
+          </h1>
+          <h1 className="text-xs sm:text-sm md:text-md lg:text-lg font-bold text-black px-4 md:px-12 lg:px-22">
+            Flexible, Upgrades, Downgrades, and Easy Cancellations.
           </h1>
 
           <div className="flex flex-col md:flex-row gap-6 md:gap-8 lg:gap-12 mb-12">
@@ -30,8 +32,10 @@ const LandingPricing = () => {
               <Card
                 key={index}
                 className={cn(
-                  plan.tag === "Free" ? "bg-white text-black" : "bg-black text-white",
-                  "text-left drop-shadow-xl px-4 py-6 md:px-6 md:py-8 lg:px-8 lg:py-10 h-fit rounded-3xl"
+                  plan.tag === "Free"
+                    ? "bg-white text-black"
+                    : "bg-black text-white",
+                  "text-left shadow-black/20 shadow-xl px-4 py-4 md:px-6 md:py-8 lg:px-6 lg:py-6 h-fit rounded-3xl"
                 )}
               >
                 <CardHeader>
@@ -67,15 +71,19 @@ const LandingPricing = () => {
                     </p>
                   ))}
                 </CardContent>
-                <CardFooter>
+                <CardFooter className="flex items-center justify-center">
                   <Link href={"/sign-up"}>
                     <Button
                       className={cn(
-                        plan.tag === "Free" ? "bg-gray-300 text-black" : "bg-sky-600",
+                        plan.tag === "Free"
+                          ? "bg-gray-300 text-black"
+                          : "bg-sky-600",
                         "drop-shadow-md"
                       )}
                     >
-                      {plan.tag === "Organization" ? "Book a Demo" : "Buy Now"}
+                      {plan.tag === "Free" && "Start for Free"}
+                      {plan.tag === "Organization" && "Book a Demo"}
+                      {plan.tag === "Premium" && "Try it now"}
                     </Button>
                   </Link>
                 </CardFooter>

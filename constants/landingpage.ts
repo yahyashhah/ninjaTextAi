@@ -4,30 +4,30 @@ export const plans = [
     price: "0.00 $",
     line: "Per user",
     description: [
-      "AI -Powered Chatbot",
-      "Upto 07 Reports Narration",
-      "No file saving, Copy only",
+      "No Credit Required",
+      "Up to 3 Report Narrations",
+      "Copy Report only",
     ],
   },
   {
     tag: "Premium",
     price: "39.99 $",
-    line: "Per user, one month",
+    line: "Per user, per month",
     description: [
-      "AI -Powered Chatbot",
-      "Unlimited Reports Narration",
-      "File saving and copying",
+      "AI-Powered Chatbot",
+      "Unlimited Report Narrations",
+      "File Saving & Copying",
     ],
   },
   {
-    tag: "Oraginzation",
+    tag: "Organization",
     price: "Contact Us",
-    line: "",
+    line: "For Organization",
     description: [
-      "Department protocol enhanced",
-      "User based pricing",
-      "Unlimited reports",
-      "History access",
+      "Department Protocol Enhanced",
+      // "Unlimited Report Narrations",
+      "History Access",
+      "Priority Support"
     ],
   },
 ];
@@ -69,10 +69,10 @@ export const faqs = [
     question: "Is Ninja Text AI suitable for small departments?",
     answer: "Yes, Ninja Text AI is scalable and can be used effectively by both small and large departments. It is designed to enhance productivity regardless of department size.",
   },
-  {
-    question: "How can we provide feedback or request new features?",
-    answer: "We value your feedback and are committed to continuously improving Ninja Text AI. You can provide feedback directly through the platform or contact our support team with your suggestions or feature requests.",
-  },
+  // {
+  //   question: "How can we provide feedback or request new features?",
+  //   answer: "We value your feedback and are committed to continuously improving Ninja Text AI. You can provide feedback directly through the platform or contact our support team with your suggestions or feature requests.",
+  // },
   {
     question: "What support is available if we encounter issues?",
     answer: "We offer support with a 24-hour turnaround when you email us at ninjatextAI@gmail.com.",

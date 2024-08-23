@@ -16,7 +16,7 @@ const LandingFooter = () => {
             alt="mainlogo"
           />
           <p className="text-xs sm:text-sm font-normal text-gray-700">
-            NinjaText-AI: web-ready incident documentation for seamless,
+            Web-ready documentation for seamless,
             efficient reporting anytime, anywhere.
           </p>
         </div>
@@ -46,7 +46,7 @@ const LandingFooter = () => {
         </div>
       </div>
       <p className="text-center py-4 text-xs sm:text-sm">
-        &copy;2024 CopNarrative. All Rights Reserved
+        &copy;2024 NinjaText AI All Rights Reserved
       </p>
     </div>
   );
