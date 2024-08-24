@@ -40,6 +40,7 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
 
   useEffect(() => {
     setReportName(name);
+    console.log(name)
   }, []);
 
   const applyStyle = (style: string) => {
@@ -233,7 +234,7 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
             <DialogTitle>Are you sure you want to copy the report?</DialogTitle>
             <DialogDescription className="mt-2">
               <br />
-              Write <span className="font-bold">{reportName}</span> below.
+              Write <span className="font-bold">{name}</span> below.
               <Input
                 onChange={(e) => setConfirmCopy(e.target.value)}
                 className="mt-4"

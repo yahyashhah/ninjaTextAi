@@ -67,7 +67,7 @@ const WitnessReport = () => {
           onClick={() => router.back()}
         />
         <h1 className="text-lg font-semibold bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent">
-          Witness Report
+          Witness Statement Report
         </h1>
       </div>
       <div className="px-4 lg:px-8 flex-1 py-4">
