@@ -35,14 +35,13 @@ export async function POST(req: Request) {
       model: "gpt-4o",
       messages: [
         {
-          role: "user",
+          role: "system",
           content: `
-                Be professional Police Report writer.
-                Write an use of force report using only information given below. 
-                Make sure to use the provided format given below.
-                Please provide a detailed account of the use of force incident, including the following information:
+                Task: Be professional Police Report writer. Write an use of force report using only information given below. 
+                Make sure to use the provided format given below. Please provide a detailed account of the use of force incident, including the following information:
+                Audience: Police Officer
                 Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-                Format: 
+                Output Format: 
                 • Date and Time: When did the use of force occur?
                 • Location: Where did the incident take place?
                 • Subject Information: Provide details about the subject(s) involved, including name, description, and reason for use of force.
@@ -54,6 +53,7 @@ export async function POST(req: Request) {
                 • Officer Actions: Detail any actions you took during the incident, including attempts to de-escalate and justification for use of force.
                 • Body cam: Was a body cam used?
                 • Additional Info: If any?
+                Format: Plain text that can be used for MSWord
                 `,
         },
         { role: "user", content: prompt },

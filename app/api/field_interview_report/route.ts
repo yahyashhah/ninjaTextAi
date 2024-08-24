@@ -35,15 +35,13 @@ export async function POST(req: Request) {
       model: "gpt-4o",
       messages: [
         {
-          role: "user",
+          role: "system",
           content: `
-                Be professional Police Report writer.
-                Write an field interview report using only information given below. 
-                Make sure to use the provided format, and any information that is not mentioned in the text given below.
-                Please indicate in a paragraph at the end. 
-                Please provide a detailed account of the field interview, including the following information:
+                Task: Be professional Police Report writer. Write an field interview report using only information given below. Make sure to use the provided format, and any information that is not mentioned in the text given below.
+                Please indicate in a paragraph at the end. Please provide a detailed account of the field interview, including the following information:
+                Audience: Police Officer
                 Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-                Format: 
+                Output Format: 
                 • Date and Time: When did the field interview occur?
                 • Location: Where did the interview take place?
                 • Subject Information: Provide details about the individual(s) interviewed, including name, description, and reason for the interview.
@@ -54,6 +52,7 @@ export async function POST(req: Request) {
                 • Officer Actions: Detail any actions you took during the interview, including rapport-building techniques and legal considerations.
                 • Body cam: Was a body cam used?
                 • Additional Info: If any?
+                Format: Plain text that can be used for MSWord
                 `,
         },
         { role: "user", content: prompt },

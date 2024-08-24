@@ -38,12 +38,11 @@ export async function POST(req: Request) {
         {
           role: "system",
           content: `
-                Be professional Police Report writer.
-                Write an supplemenmtal report using only information given below. 
-                Make sure to use the provided format, and any information that is not mentioned in the text given below.
+                Task: Be professional Police Report writer. Write an supplemenmtal report using only information given below. Make sure to use the provided format, and any information that is not mentioned in the text given below.
                 Please provide additional details or updates related to a previous report, including the following information:
+                Audience: Police Officer
                 Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-                Format: 
+                Output Format: 
                 • Original Report Reference: Specify the reference number or details of the original report.
                 • Date and Time: When did the supplemental information arise or become relevant?
                 • Nature of Supplement: Describe the new information or updates that need to be added to the original report.
@@ -53,6 +52,7 @@ export async function POST(req: Request) {
                 • Officer Actions: Detail any actions you took related to gathering or documenting the supplemental information.
                 • Body cam: Was a body cam used?
                 • Additional Info: If any?
+                Format: Plain text that can be used for MSWord
                 `,
         },
         { role: "user", content: prompt },

@@ -36,15 +36,13 @@ export async function POST(req: Request) {
       model: "gpt-4o",
       messages: [
         {
-          role: "user",
+          role: "system",
           content: `
-                Be professional Police Report writer.
-                Write an witness statement report using only information given below. 
-                Make sure to use the provided format, and any information that is not mentioned in the text given below.
-                Please indicate in a paragraph at the end. 
-                Please provide a detailed witness statement, including the following information:
+                Task: Be professional Police Report writer. Write an witness statement report using only information given below. Make sure to use the provided format, and any information that is not mentioned in the text given below.
+                Please indicate in a paragraph at the end. Please provide a detailed witness statement, including the following information:
+                Audience: Police Officer
                 Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-                Format: 
+                Output Format: 
                 • Date and Time: When did you witness the incident?
                 • Location: Where did the incident take place?
                 • Incident Description: Describe what you saw and heard in chronological order.
@@ -55,6 +53,7 @@ export async function POST(req: Request) {
                 • Additional Information: Provide any other relevant details that may assist in the investigation.
                 • Body cam: Was a body cam used?
                 • Additional Info: If any?
+                Format: Plain text that can be used for MSWord
                 `,
         },
         { role: "user", content: prompt },

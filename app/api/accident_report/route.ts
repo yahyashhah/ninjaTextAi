@@ -36,15 +36,13 @@ export async function POST(req: Request) {
       model: "gpt-4o",
       messages: [
         {
-          role: "user",
+          role: "system",
           content: `
-                Be professional Police Report writer.
-                Write an accident report using only information given below. 
-                Make sure to use the provided format, and any information that is not mentioned in the text given below.
-                Please indicate in a paragraph at the end. 
+                Task: Be professional Police Report writer. Write an accident report using only information given below. Make sure to use the provided format, and any information that is not mentioned in the text given below. Please indicate in a paragraph at the end. 
                 Please provide a detailed account of the accident, including the following information:
+                Audience: Police Officer
                 Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-                Format: 
+                Output Format: 
                 • Date and Time: When did the accident occur?
                 • Location: Where did the accident take place?
                 • Involved Parties: Who was involved? Include names, descriptions, and roles (e.g., drivers, passengers, pedestrians).
@@ -56,6 +54,7 @@ export async function POST(req: Request) {
                 • Officer Actions: Detail any actions you took at the accident scene, including traffic control and medical assistance provided.
                 • Body cam: Was a body cam used?
                 • Additional Info: If any?
+                Format: Plain text that can be used for MSWord
                 `,
         },
         { role: "user", content: prompt },
