@@ -31,7 +31,7 @@ const Dashboard = () => {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 px-4 md:px-8 lg:px-16">
         {dashboardConstants.map((tool, index) => (
-          <TooltipProvider>
+          <TooltipProvider key={index}>
           <Tooltip>
             <TooltipTrigger asChild>
           <Card
