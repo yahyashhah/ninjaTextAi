@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -40,7 +41,7 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
 
   useEffect(() => {
     setReportName(name);
-    console.log(name)
+    console.log(name);
   }, []);
 
   const applyStyle = (style: string) => {
@@ -125,7 +126,7 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(text);
-      setConfirmCopy("")
+      setConfirmCopy("");
       toast({
         variant: "default",
         title: "Copied",
@@ -160,7 +161,13 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
               </DialogTitle>
               <DialogDescription className="mt-2">
                 <br />
-                Write <span className="font-bold">{name}</span> in the textbox:
+                By clicking "Approve," you confirm that you have thoroughly
+                reviewed the narrative and verify that it is accurate and
+                complete. Any necessary edits should be made before proceeding.
+                <br />
+                <br />
+                Write <span className="font-bold">{name}</span> in the textbox
+                to update file.
                 <Input
                   onChange={(e) => setConfirmName(e.target.value)}
                   className="mt-4"
@@ -168,13 +175,19 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
                 />
               </DialogDescription>
             </DialogHeader>
+
             <DialogFooter>
+              <DialogClose>
+                <Button className="bg-sky-500 drop-shadow-md w-full sm:w-auto">
+                  Keep Editing
+                </Button>
+              </DialogClose>
               <Button
                 className="bg-sky-500 drop-shadow-md w-full sm:w-auto"
                 disabled={name === confirmName ? false : true}
                 onClick={handleSave}
               >
-                Update File
+                Approve
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -233,8 +246,13 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
           <DialogHeader>
             <DialogTitle>Are you sure you want to copy the report?</DialogTitle>
             <DialogDescription className="mt-2">
+              By clicking "Approve," you confirm that you have thoroughly
+              reviewed the narrative and verify that it is accurate and
+              complete. Any necessary edits should be made before proceeding.
               <br />
-              Write <span className="font-bold">{name}</span> below.
+              <br />
+              Write <span className="font-bold">{name}</span> in textbox to copy
+              text
               <Input
                 onChange={(e) => setConfirmCopy(e.target.value)}
                 className="mt-4"
@@ -243,12 +261,17 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
+            <DialogClose>
+              <Button className="bg-sky-500 drop-shadow-md w-full sm:w-auto">
+                Keep Editing
+              </Button>
+            </DialogClose>
             <Button
               className="bg-sky-500 hover:bg-sky-600 text-white"
               onClick={handleCopy}
               disabled={name === confirmCopy ? false : true}
             >
-              <Copy className="h-5 w-5 flex items-center gap-x-2" /> Copy Report
+              Approve
             </Button>
           </DialogFooter>
         </DialogContent>

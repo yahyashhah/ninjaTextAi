@@ -37,21 +37,19 @@ export async function POST(req: Request) {
         {
           role: "system",
           content: `
-                Task: Be professional Police Report writer. Write an use of force report using only information given below. 
-                Make sure to use the provided format given below. Please provide a detailed account of the use of force incident, including the following information:
-                Audience: Police Officer
-                Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-                Output Format: 
-                • Date and Time: When did the use of force occur?
-                • Location: Where did the incident take place?
-                • Subject Information: Provide details about the subject(s) involved, including name, description, and reason for use of force.
-                • Force Used: Describe the type of force used and the circumstances leading to its use.
-                • Witness Statements: Summarize any statements made by witnesses or involved parties.
-                • Evidence: Describe any evidence collected at the scene (e.g., body camera footage, injuries).
-                • Injuries: Note any injuries sustained by officers or subjects involved.
-                • Resolution: What was the outcome of the use of force incident? Include any arrests made, medical assistance provided, and reports filed.
-                • Officer Actions: Detail any actions you took during the incident, including attempts to de-escalate and justification for use of force.
-                • Body cam: Was a body cam used?
+                Task: Be a Professional Police Report writer and extract the following details from the user text given below.
+                Task: Be accuarte while extracting the details given below
+                Details: 
+                • Date and Time: if any
+                • Location: if any
+                • Subject Information: if any
+                • Force Used: if any (extract the exact use of force)
+                • Witness Statements: if any (create exact summary of witness statement)
+                • Evidence: if any 
+                • Injuries and Damages: if any
+                • Resolution: Extract the outcome of accident (if any)
+                • Officer Actions: if any (what was the action of officer)
+                • Body cam: if any (Was a body cam used?)
                 • Additional Info: If any?
                 Format: Plain text that can be used for MSWord
                 `,

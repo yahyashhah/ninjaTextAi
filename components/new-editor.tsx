@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -144,7 +145,7 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(text);
-      setConfirmCopy("")
+      setConfirmCopy("");
       toast({
         variant: "default",
         title: "Copied",
@@ -188,6 +189,11 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
               </DialogTitle>
               <DialogDescription className="mt-2">
                 <br />
+                By clicking "Approve," you confirm that you have thoroughly
+                reviewed the narrative and verify that it is accurate and
+                complete. Any necessary edits should be made before proceeding.
+                <br />
+                <br />
                 Write <span className="font-bold">{reportName}</span> below.
                 <Input
                   onChange={(e) => setConfirmName(e.target.value)}
@@ -197,12 +203,17 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
+              <DialogClose>
+                <Button className="bg-sky-500 drop-shadow-md w-full sm:w-auto">
+                  Keep Editing
+                </Button>
+              </DialogClose>
               <Button
                 className="bg-sky-500 hover:bg-sky-600 text-white"
                 onClick={handleSave}
                 disabled={reportName === confirmName ? false : true}
               >
-                Save File
+                Approve
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -252,9 +263,7 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
       </div>
       <Dialog>
         <DialogTrigger asChild>
-          <Button
-            className="flex items-center gap-x-2 mt-4 bg-sky-500 hover:bg-sky-600 text-white"
-          >
+          <Button className="flex items-center gap-x-2 mt-4 bg-sky-500 hover:bg-sky-600 text-white">
             <Copy className="h-5 w-5" /> Copy Report
           </Button>
         </DialogTrigger>
@@ -262,6 +271,11 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
           <DialogHeader>
             <DialogTitle>Are you sure you want to copy the report?</DialogTitle>
             <DialogDescription className="mt-2">
+              <br />
+              By clicking "Approve," you confirm that you have thoroughly
+              reviewed the narrative and verify that it is accurate and
+              complete. Any necessary edits should be made before proceeding.
+              <br />
               <br />
               Write <span className="font-bold">{reportName}</span> below.
               <Input
@@ -272,12 +286,17 @@ const TextEditor = ({ text = "", tag = "" }: EditorProps) => {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
+          <DialogClose>
+                <Button className="bg-sky-500 drop-shadow-md w-full sm:w-auto">
+                  Keep Editing
+                </Button>
+              </DialogClose>
             <Button
               className="bg-sky-500 hover:bg-sky-600 text-white"
               onClick={handleCopy}
               disabled={reportName === confirmCopy ? false : true}
             >
-              <Copy className="h-5 w-5 flex items-center gap-x-2" /> Copy Report
+              Approve
             </Button>
           </DialogFooter>
         </DialogContent>

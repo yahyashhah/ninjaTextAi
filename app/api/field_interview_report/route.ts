@@ -37,20 +37,18 @@ export async function POST(req: Request) {
         {
           role: "system",
           content: `
-                Task: Be professional Police Report writer. Write an field interview report using only information given below. Make sure to use the provided format, and any information that is not mentioned in the text given below.
-                Please indicate in a paragraph at the end. Please provide a detailed account of the field interview, including the following information:
-                Audience: Police Officer
-                Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-                Output Format: 
-                • Date and Time: When did the field interview occur?
-                • Location: Where did the interview take place?
-                • Subject Information: Provide details about the individual(s) interviewed, including name, description, and reason for the interview.
-                • Interview Details: Summarize the conversation and topics discussed during the interview.
-                • Witness Statements: Include any statements made by witnesses or others present during the interview.
-                • Evidence: Describe any evidence collected or observations made during the interview (e.g., ID checks, items seized).
-                • Outcome: What was the outcome of the field interview? Include any actions taken or referrals made based on the interview.
-                • Officer Actions: Detail any actions you took during the interview, including rapport-building techniques and legal considerations.
-                • Body cam: Was a body cam used?
+                Task: Be a Professional Police Report writer and extract the following details from the user text given below.
+                Task: Be accuarte while extracting the details given below
+                Details: 
+                • Date and Time: if any
+                • Location: if any
+                • Subject Information: if any (extract details about the individual(s) interviewed)
+                • Interview Details: if any (extract the conversation and topics discussed during the interview).
+                • Witness Statements: if any (extract any statements made by witnesses or others present during the interview)
+                • Evidence: if any (extract evidence collected or observations made during the interview)
+                • Outcome: if any (extract the outcome of the field interview)
+                • Officer Actions: if any (what was the action of officer)
+                • Body cam: if any (Was a body cam used?)
                 • Additional Info: If any?
                 Format: Plain text that can be used for MSWord
                 `,

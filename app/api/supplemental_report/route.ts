@@ -38,20 +38,18 @@ export async function POST(req: Request) {
         {
           role: "system",
           content: `
-                Task: Be professional Police Report writer. Write an supplemenmtal report using only information given below. Make sure to use the provided format, and any information that is not mentioned in the text given below.
-                Please provide additional details or updates related to a previous report, including the following information:
-                Audience: Police Officer
-                Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-                Output Format: 
+                Task: Be a Professional Police Report writer and extract the following details from the user text given below.
+                Task: Be accuarte while extracting the details given below
+                Details: 
                 • Original Report Reference: Specify the reference number or details of the original report.
-                • Date and Time: When did the supplemental information arise or become relevant?
-                • Nature of Supplement: Describe the new information or updates that need to be added to the original report.
-                • Statements: Summarize any new statements made by involved parties or witnesses.
-                • Evidence: Describe any new evidence collected or observations made since the original report.
-                • Outcome: How does this supplemental information affect the outcome or understanding of the incident?
-                • Officer Actions: Detail any actions you took related to gathering or documenting the supplemental information.
-                • Body cam: Was a body cam used?
-                • Additional Info: If any?
+                • Date and Time: if any
+                • Nature of Supplement: if any (extract new information or updates that need to be added to the original report)
+                • Statements: if any (extract new statements made by involved parties or witnesses.)
+                • Evidence: if any 
+                • Outcome: if any (extract the exact outcomes of arrest)
+                • Officer Actions: if any (what was the action of officer)
+                • Body cam: if any (Was a body cam used?)
+                • Additional Info: if any?
                 Format: Plain text that can be used for MSWord
                 `,
         },

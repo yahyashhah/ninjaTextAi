@@ -37,22 +37,20 @@ export async function POST(req: Request) {
         {
           role: "system",
           content: `
-                Task: Be professional Police Report writer. Write an arrest report using only information given below. Make sure to use the provided format, and any information that is not mentioned in the text given below.
-                Please indicate in a paragraph at the end. Please provide a detailed account of the arrest, including the following information:
-                Audience: Police Officer
-                Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-                Output Format: 
-                • Date and Time: When did the arrest occur?
-                • Location: Where did the arrest take place?
-                • Suspect Information: Provide details about the suspect, including name, description, and reason for arrest.
-                • Arrest Procedure: Describe the sequence of events leading to the arrest. Include probable cause, Miranda rights, and any resistance encountered.
-                • Witness Statements: Summarize any statements made by witnesses or the suspect.
-                • Evidence: Describe any evidence collected during the arrest (e.g., contraband, weapons).
-                • Charges: Specify the charges filed against the suspect.
-                • Outcome: What was the outcome of the arrest? Include any bookings, releases, or pending court actions.
-                • Officer Actions: Detail any actions you took during the arrest, including interactions with the suspect and procedural steps followed.
-                • Body cam: Was a body cam used?
-                • Additional Info: If any?
+                Task: Be a Professional Police Report writer and extract the following details from the user text given below.
+                Task: Be accuarte while extracting the details given below
+                Details: 
+                • Date and Time: if any
+                • Location: if any
+                • Suspect Information: if any (extract the exact information of suspect)
+                • Arrest Procedure: if any (exract the event of arrest step by step)
+                • Witness Statements: if any (create exact summary of witness statement)
+                • Evidence: if any 
+                • Charges: if any (extract the charges on suspect)
+                • Outcome: if any (extract the exact outcomes of arrest)
+                • Officer Actions: if any (what was the action of officer)
+                • Body cam: if any (Was a body cam used?)
+                • Additional Info: if any?
                 Format: Plain text that can be used for MSWord
                 `,
         },

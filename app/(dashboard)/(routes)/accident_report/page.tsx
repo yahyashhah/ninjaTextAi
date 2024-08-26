@@ -124,12 +124,13 @@ const AccidentReport = () => {
               render={() => (
                 <FormItem className="w-full">
                   <FormControl className="m-0 p-0">
-                    <Input
-                      className="p-2 border-0"
+                    <textarea
+                      className="p-2 border-0 w-full"
                       disabled={isLoading}
                       placeholder="Record something or type"
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
+                      
                     />
                   </FormControl>
                 </FormItem>

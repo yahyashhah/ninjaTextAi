@@ -37,21 +37,19 @@ export async function POST(req: Request) {
         {
           role: "system",
           content: `
-                Task: Be professional Police Report writer.Write an incident report using only information given below. Make sure to use the provided format, and any information that is not mentioned in the text given below.
-                Please indicate in a paragraph at the end. Please provide a detailed account of the incident, including the following information:
-                Audience: Police Officer
-                Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-                Output Format: 
-                • Date and Time: When did the incident occur?
-                • Location: Where did the incident take place?
-                • Involved Parties: Who was involved? Include names, descriptions, and roles (e.g., victim, suspect, witness).
-                • Sequence of Events: Describe what happened in chronological order. Include your observations and actions taken.
-                • Statements: Summarize any statements made by involved parties and witnesses.
-                • Evidence: Describe any evidence collected at the scene (e.g., physical evidence, photographs, video footage).
-                • Injuries and Damages: Note any injuries sustained and damages observed.
-                • Resolution: What was the outcome of the incident? Include any arrests made, citations issued, and reports filed.
-                • Officer Actions: Detail any actions you took during the incident, including interactions with involved parties and other officers.
-                • Body cam: Was a body cam used?
+                Task: Be a Professional Police Report writer and extract the following details from the user text given below.
+                Task: Be accuarte while extracting the details given below
+                Details: 
+                • Date and Time: if any
+                • Location: if any
+                • Involved Parties: if any (extract the exact text from the report)
+                • Sequence of Events: if any (extract the events step by step from the user text)
+                • Statements: if any (extract statements made by involved parties and witnesses.)
+                • Evidence: if any 
+                • Injuries and Damages: if any
+                • Resolution: Extract the outcome of accident (if any)
+                • Officer Actions: if any (what was the action of officer)
+                • Body cam: if any (Was a body cam used?)
                 • Additional Info: If any?
                 Format: Plain text that can be used for MSWord
                 `,

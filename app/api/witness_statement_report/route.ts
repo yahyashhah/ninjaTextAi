@@ -38,20 +38,18 @@ export async function POST(req: Request) {
         {
           role: "system",
           content: `
-                Task: Be professional Police Report writer. Write an witness statement report using only information given below. Make sure to use the provided format, and any information that is not mentioned in the text given below.
-                Please indicate in a paragraph at the end. Please provide a detailed witness statement, including the following information:
-                Audience: Police Officer
-                Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-                Output Format: 
-                • Date and Time: When did you witness the incident?
-                • Location: Where did the incident take place?
-                • Incident Description: Describe what you saw and heard in chronological order.
-                • Parties Involved: Identify any individuals involved in the incident.
-                • Your Role: Specify your relationship to the incident (e.g., bystander, victim, companion).
-                • Observations: Include any observations or details that may be relevant to the incident.
-                • Statements: Summarize any statements made by others involved or witnesses.
-                • Additional Information: Provide any other relevant details that may assist in the investigation.
-                • Body cam: Was a body cam used?
+                Task: Be a Professional Police Report writer and extract the following details from the user text given below.
+                Task: Be accuarte while extracting the details given below
+                Details: 
+                • Date and Time: if any
+                • Location: if any
+                • Incident Description: if any (extract what was seen or heard in chronological order.)
+                • Involved Parties: if any (extract the exact text from the report)
+                • Your Role: if any (extract user relationship to the incident)
+                • Observations: if any (extract details that may be relevant to the incident.)
+                • Statements: if any (extract any statements made by involved parties or witnesses.)
+                • Additional Details: if any (extract relevant details that may assist in the investigation.)
+                • Body cam: if any (was a body cam used?)
                 • Additional Info: If any?
                 Format: Plain text that can be used for MSWord
                 `,
