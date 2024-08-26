@@ -73,7 +73,7 @@ const ArrestReport = () => {
           className="space-y-4 mt-4 overflow-y-auto max-h-[calc(100vh-180px)]" // Adjust max-height as needed
         >
           {isLoading && (
-            <div className="p-8 rounded-lg w-full flex items-center justify-center bg-gray-200">
+            <div className="p-8 rounded-lg w-full flex items-center justify-center bg-white">
               <Loader />
             </div>
           )}
@@ -122,8 +122,8 @@ const ArrestReport = () => {
               render={() => (
                 <FormItem className="w-full">
                   <FormControl className="m-0 p-0">
-                    <Input
-                      className="p-2 border-0"
+                    <textarea
+                      className="p-2 border-0 w-full"
                       disabled={isLoading}
                       placeholder="Record something or type"
                       value={prompt}

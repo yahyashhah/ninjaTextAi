@@ -73,7 +73,7 @@ const AccidentReport = () => {
           className="space-y-4 mt-4 overflow-y-auto max-h-[calc(100vh-180px)]" // Adjust max-height as needed
         >
           {isLoading && (
-            <div className="p-8 rounded-lg w-full flex items-center justify-center bg-gray-200">
+            <div className="p-8 rounded-lg w-full flex items-center justify-center bg-white">
               <Loader />
             </div>
           )}
