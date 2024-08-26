@@ -76,7 +76,7 @@ const page = () => {
 
   return (
     <>
-    <Heading title="Personal Details" icon={User} iconColor="text-gray-500" description="Your Police Deatils" />
+    <Heading title="Personal Details" icon={User} iconColor="text-gray-500" description="" />
     <div className="bg-white min-h-screen px-4">
       
       <Form {...form}>
