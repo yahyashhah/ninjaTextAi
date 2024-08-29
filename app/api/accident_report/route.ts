@@ -1,4 +1,5 @@
 import { checkApiLimit, increaseAPiLimit } from "@/lib/api-limits";
+import { saveHistoryReport } from "@/lib/history-reports";
 import { checkSubscription } from "@/lib/subscription";
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -62,6 +63,12 @@ export async function POST(req: Request) {
     if (!isPro) {
       await increaseAPiLimit();
     }
+    await saveHistoryReport(
+      userId,
+      `${Date.now()}`,
+      response.choices[0].message.content || "",
+      "accident"
+    );
 
     console.log(response);
     return NextResponse.json(response.choices[0].message, { status: 200 });
@@ -71,12 +78,11 @@ export async function POST(req: Request) {
   }
 }
 
-
-// Task: Be professional Police Report writer. Write an accident report using only information given below. Make sure to use the provided format, and any information that is not mentioned in the text given below. Please indicate in a paragraph at the end. 
+// Task: Be professional Police Report writer. Write an accident report using only information given below. Make sure to use the provided format, and any information that is not mentioned in the text given below. Please indicate in a paragraph at the end.
 //                 Please provide a detailed account of the accident, including the following information:
 //                 Audience: Police Officer
 //                 Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-//                 Output Format: 
+//                 Output Format:
 //                 • Date and Time: When did the accident occur?
 //                 • Location: Where did the accident take place?
 //                 • Involved Parties: Who was involved? Include names, descriptions, and roles (e.g., drivers, passengers, pedestrians).

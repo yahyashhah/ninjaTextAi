@@ -42,3 +42,13 @@ model UserReports {
   updatedAt DateTime @updatedAt
 
 }
+
+model ReportsHistory {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+  userId String
+  reportName String?
+  reportText String?
+  tag String? 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

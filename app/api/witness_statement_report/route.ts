@@ -1,4 +1,5 @@
 import { checkApiLimit, increaseAPiLimit } from "@/lib/api-limits";
+import { saveHistoryReport } from "@/lib/history-reports";
 import { checkSubscription } from "@/lib/subscription";
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -61,6 +62,13 @@ export async function POST(req: Request) {
     if (!isPro) {
       await increaseAPiLimit();
     }
+
+    await saveHistoryReport(
+      userId,
+      `${Date.now()}`,
+      response.choices[0].message.content || "",
+      "witness"
+    );
 
     console.log(response);
     return NextResponse.json(response.choices[0].message, { status: 200 });

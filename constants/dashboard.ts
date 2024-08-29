@@ -8,6 +8,7 @@ import {
   Folder,
   SendToBack,
   DollarSign,
+  History,
 } from "lucide-react";
 
 export const sidebarRoutes = [
@@ -35,6 +36,12 @@ export const sidebarRoutes = [
   //   href: "/department_protocol",
   //   color: "text-pink-700",
   // },
+  {
+    label: "History",
+    icon: History,
+    href: "/history",
+    color: "text-sky-500",
+  },
   {
     label: "Accout Settings",
     icon: UserCircle,
