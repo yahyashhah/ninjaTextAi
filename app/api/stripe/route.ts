@@ -8,6 +8,8 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 const chatUrl = absoluteUrl("/chat") as string;
 const manage_subscriptions = absoluteUrl("/manage_subscriptions") as string;
 
+let amount = 1999
+
 export async function GET() {
   try {
     const { userId } = auth();
@@ -15,6 +17,16 @@ export async function GET() {
 
     if (!userId || !user) {
       return new NextResponse("Unauthorized User", { status: 401 });
+    }
+
+    const reffer = await prismadb.userReferralLinks.findUnique({
+      where: {
+        userId
+      }
+    })
+
+    if(reffer?.discount === true) {
+      amount = 1520
     }
 
     const userSubscription = await prismadb.userSubscription.findUnique({
@@ -43,7 +55,7 @@ export async function GET() {
               name: "NinjaText-AI Pro",
               description: "Unlimited NinjaText-AI Report Generations",
             },
-            unit_amount: 3999,
+            unit_amount: amount,
             recurring: {
               interval: "month",
             },

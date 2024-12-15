@@ -18,11 +18,22 @@ import { cn } from "@/lib/utils";
 import TextEditor from "@/components/new-editor";
 import { Empty } from "@/components/empty";
 
+type Template = {
+  id: string;
+  templateName: string;
+  instructions: string;
+  reportType: string;
+  createdAt: string
+};
 const DomesticVoilenceReport = () => {
   const router = useRouter();
   const { startListening, stopListening, transcript } = useVoiceToText();
   const [prompt, setPrompt] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("")
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [filteredTemplates, setFilteredTemplates] = useState<Template[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
 
   useEffect(() => {
     if (isListening) {
@@ -43,9 +54,15 @@ const DomesticVoilenceReport = () => {
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
-      values.prompt = prompt;
-      console.log(values.prompt);
-      const response = await axios.post("/api/domestic_voilence_report", values);
+      const dataToSend = {
+        ...values,
+        prompt: prompt,
+        selectedTemplate: selectedTemplate,
+      };
+      console.log(dataToSend.prompt);
+      console.log(dataToSend.selectedTemplate);
+  
+      const response = await axios.post("/api/domestic_voilence_report", dataToSend);
       console.log(response.data);
       setMessage(response.data.content);
       form.reset({ prompt: "" });
@@ -54,7 +71,33 @@ const DomesticVoilenceReport = () => {
     } finally {
       router.refresh();
     }
-  };
+  };  
+
+
+  // Fetch templates from API
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      try {
+        const response = await axios.post('/api/filter_template', {
+          reportType: 'domestic violence report',
+        });
+        setTemplates(response.data.templates);
+        setFilteredTemplates(response.data.templates);
+      } catch (error) {
+        console.error("Error fetching templates:", error);
+      }
+    };
+    fetchTemplates();
+  }, []);
+console.log(templates);
+
+  useEffect(() => {
+    const filtered = templates.filter(template =>
+      template.templateName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    setFilteredTemplates(filtered);
+  }, [searchTerm, templates]);
+  
 
   return (
     <div className="flex flex-col h-[calc(100vh-74px)] bg-gray-100">
@@ -78,7 +121,7 @@ const DomesticVoilenceReport = () => {
             </div>
           )}
           {message.length === 0 && !isLoading && (
-            <Empty label="Let's Generate Incident Report!" />
+            <Empty searchTerm={searchTerm} setSearchTerm={setSearchTerm} filteredTemplates={filteredTemplates} selectedTemplate={selectedTemplate} setSelectedTemplate={setSelectedTemplate} />
           )}
           <div className="flex flex-col-reverse gap-y-4">
             {message.length > 0 && (

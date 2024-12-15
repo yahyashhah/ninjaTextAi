@@ -1,3 +1,4 @@
+import ContactUsGeneralForm from "@/components/contact-us-general";
 import LandingFAQs from "@/components/landing-faq";
 import LandingFeatures from "@/components/landing-features";
 import LandingFooter from "@/components/landing-footer";
@@ -18,6 +19,7 @@ export default function Home() {
           <LandingNarrative />
           <LandingPricing />
           <LandingFAQs />
+          <ContactUsGeneralForm />
           <LandingFooter />
         </div>
       </div>

@@ -9,6 +9,7 @@ import {
   SendToBack,
   DollarSign,
   History,
+  NotepadTextDashedIcon,
 } from "lucide-react";
 
 export const sidebarRoutes = [
@@ -41,6 +42,12 @@ export const sidebarRoutes = [
     icon: History,
     href: "/history",
     color: "text-sky-500",
+  },
+  {
+    label: "Templates",
+    icon:  NotepadTextDashedIcon,
+    href: "/templates_page",
+    color: "text-orange-500",
   },
   {
     label: "Accout Settings",
