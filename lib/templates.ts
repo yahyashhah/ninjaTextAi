@@ -26,6 +26,23 @@ export const saveUploadTemplate = async (
   });
 };
 
+export const updateTemplate = async (
+  id: string,
+  templateName: string,
+  instructions: string,
+) => {
+  if (!id) {
+    return;
+  }
+  // Update the template with the new values
+  await prisma.uploadTemplates.update({
+    where: { id: id },
+    data: {
+      templateName,
+      instructions,
+    },
+  });
+};
 
 // Get all templates for the current user
 export const getAllUploadTemplates = async () => {

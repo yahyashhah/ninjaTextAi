@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "./ui/input";
 import { useRouter } from "next/navigation";
+import { log } from "console";
 
 interface EditorProps {
   text: string;
@@ -104,7 +105,7 @@ const TemplateEditor = ({
     link.download = "untitled.txt";
     link.click();
   };
-
+  
   const handleSave = async () => {
     try {
       const instructions = documentText.length === 0 ? text : documentText;
@@ -116,7 +117,7 @@ const TemplateEditor = ({
       }, {
         headers: { 'Content-Type': 'application/json' }
       });
-  
+      console.log(response.data);
       if (response.status === 200) {
         console.log(response.data.message);
       }
@@ -157,15 +158,105 @@ const TemplateEditor = ({
 
   return (
     <div className="container mx-auto p-4 bg-white rounded-lg shadow">
-      <div className="mb-4 flex flex-wrap items-center gap-2 sm:gap-4">
+      <div className="mb-4 flex justify-between items-center">
+        <div className="flex items-center gap-2">
         Template Name :<Input className="w-fit" value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
+        </div>
         <br />
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
         <Dialog>
+        <DialogTrigger asChild>
+          <Button className="flex items-center gap-x-2 bg-sky-500 hover:bg-sky-600 text-white">
+            <Copy className="h-5 w-5" /> Copy Template
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Are you sure you want to copy the template?</DialogTitle>
+            <DialogDescription className="mt-2">
+              By clicking "Approve," you confirm that you have thoroughly
+              reviewed the narrative and verify that it is accurate and
+              complete. Any necessary edits should be made before proceeding.
+              <br />
+              <br />
+              Write <span className="font-bold">{name}</span> in textbox to copy
+              text
+              <Input
+                onChange={(e) => setConfirmCopy(e.target.value)}
+                className="mt-4"
+                placeholder="Please write here!"
+              />
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose>
+              <Button className="bg-sky-500 drop-shadow-md w-full sm:w-auto">
+                Keep Editing
+              </Button>
+            </DialogClose>
+            <Button
+              className="bg-sky-500 drop-shadow-md w-full sm:w-auto"
+              disabled={name === confirmCopy ? false : true}
+              onClick={handleCopy}
+            >
+              Approve
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+        <Button
+          className="bg-sky-500 drop-shadow-md text-xs sm:text-base"
+          onClick={handleDownloadTxt}
+        >
+          Download File
+        </Button>
+        <Button
+          className="bg-sky-500 drop-shadow-md text-xs sm:text-base"
+          onClick={handlePrint}
+        >
+          Print
+        </Button>
+        </div>
+      </div>
+      <div className="flex gap-1 sm:gap-2 mb-4">
+        <Button
+          onClick={() => applyStyle("font-weight: bold;")}
+          className="border p-1 sm:p-2 rounded bg-sky-500 drop-shadow-md"
+        >
+          <BoldIcon />
+        </Button>
+        <Button
+          onClick={() => applyStyle("font-style: italic;")}
+          className="border p-1 sm:p-2 rounded bg-sky-500 drop-shadow-md"
+        >
+          <ItalicIcon />
+        </Button>
+        <Button
+          onClick={() => applyStyle("text-decoration: underline;")}
+          className="border p-1 sm:p-2 rounded bg-sky-500 drop-shadow-md"
+        >
+          <UnderlineIcon />
+        </Button>
+      </div>
+      <div ref={printRef}>
+        <div
+          ref={contentRef}
+          contentEditable
+          className="border-4 p-4 rounded min-h-[200px] whitespace-pre-wrap"
+          onInput={handleInput}
+        >
+          <pre className="whitespace-pre-wrap">{text}</pre>
+        </div>
+      </div>
+
+      <Dialog>
+        <div className="flex justify-end mt-4">
           <DialogTrigger asChild>
             <Button className="bg-sky-500 drop-shadow-md text-xs sm:text-base">
               Save Template
             </Button>
           </DialogTrigger>
+        </div>
           <DialogContent className="sm:max-w-[425px] w-full">
             <DialogHeader>
               <DialogTitle>
@@ -204,90 +295,7 @@ const TemplateEditor = ({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        <Button
-          className="bg-sky-500 drop-shadow-md text-xs sm:text-base"
-          onClick={handleDownloadTxt}
-        >
-          Download File
-        </Button>
-        <Button
-          className="bg-sky-500 drop-shadow-md text-xs sm:text-base"
-          onClick={handlePrint}
-        >
-          Print
-        </Button>
-      </div>
-      <div className="flex gap-1 sm:gap-2 mb-4">
-        <Button
-          onClick={() => applyStyle("font-weight: bold;")}
-          className="border p-1 sm:p-2 rounded bg-sky-500 drop-shadow-md"
-        >
-          <BoldIcon />
-        </Button>
-        <Button
-          onClick={() => applyStyle("font-style: italic;")}
-          className="border p-1 sm:p-2 rounded bg-sky-500 drop-shadow-md"
-        >
-          <ItalicIcon />
-        </Button>
-        <Button
-          onClick={() => applyStyle("text-decoration: underline;")}
-          className="border p-1 sm:p-2 rounded bg-sky-500 drop-shadow-md"
-        >
-          <UnderlineIcon />
-        </Button>
-      </div>
-      <div ref={printRef}>
-        <div
-          ref={contentRef}
-          contentEditable
-          className="border-4 p-4 rounded min-h-[200px] whitespace-pre-wrap"
-          onInput={handleInput}
-        >
-          <pre className="whitespace-pre-wrap">{text}</pre>
-        </div>
-      </div>
-
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button className="flex items-center gap-x-2 mt-4 bg-sky-500 hover:bg-sky-600 text-white">
-            <Copy className="h-5 w-5" /> Copy Template
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Are you sure you want to copy the template?</DialogTitle>
-            <DialogDescription className="mt-2">
-              By clicking "Approve," you confirm that you have thoroughly
-              reviewed the narrative and verify that it is accurate and
-              complete. Any necessary edits should be made before proceeding.
-              <br />
-              <br />
-              Write <span className="font-bold">{name}</span> in textbox to copy
-              text
-              <Input
-                onChange={(e) => setConfirmCopy(e.target.value)}
-                className="mt-4"
-                placeholder="Please write here!"
-              />
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose>
-              <Button className="bg-sky-500 drop-shadow-md w-full sm:w-auto">
-                Keep Editing
-              </Button>
-            </DialogClose>
-            <Button
-              className="bg-sky-500 drop-shadow-md w-full sm:w-auto"
-              disabled={name === confirmCopy ? false : true}
-              onClick={handleCopy}
-            >
-              Approve
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+     
     </div>
   );
 };

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import * as Select from "@radix-ui/react-select";
 import * as Label from "@radix-ui/react-label";
-import { AirVent, Check, ChevronDown } from "lucide-react";
+import { AirVent, Check, ChevronDown, ChevronLeft } from "lucide-react";
 import axios from "axios";
 import { useRouter } from 'next/navigation';
 import * as Tooltip from "@radix-ui/react-tooltip";
@@ -56,6 +56,11 @@ const handleSubmit = async (e: React.FormEvent) => {
 };
   return (
     <div className="flex flex-col h-[calc(100vh-74px)] bg-gray-100">
+      <div className="w-full flex justify-between items-center p-4 px-6 bg-white border boredr-slate-300  rounded-b-lg">
+        <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-700 hover:text-blue-600 transition-colors">
+        <ChevronLeft />        
+        </button>
+      </div>
       <div className='w-full p-4 px-6 bg-white shadow-md rounded-b-lg'>
       <form onSubmit={handleSubmit} className="space-y-4 w-full mx-auto p-4 border rounded-lg">
       {/* Instructions Text Area */}

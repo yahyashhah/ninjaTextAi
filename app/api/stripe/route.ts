@@ -10,6 +10,8 @@ const manage_subscriptions = absoluteUrl("/manage_subscriptions") as string;
 
 let amount = 1999
 
+console.log(process.env.STRIPE_SECRET_KEY)
+
 export async function GET() {
   try {
     const { userId } = auth();
@@ -19,6 +21,8 @@ export async function GET() {
       return new NextResponse("Unauthorized User", { status: 401 });
     }
 
+    console.log(user);
+    
     const reffer = await prismadb.userReferralLinks.findUnique({
       where: {
         userId

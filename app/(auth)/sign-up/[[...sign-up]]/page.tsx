@@ -1,84 +1,103 @@
-// import { SignUp } from "@clerk/nextjs";
-
-// export default function Page() {
-//     return (
-//         <div className="w-full min-h-screen flex items-center justify-center">
-//           <SignUp />
-//         </div>
-//       );
-//     }
-
 "use client";
 import React, { useState } from "react";
 import { useSignUp } from "@clerk/clerk-react";
 import { useSearchParams, useRouter } from "next/navigation";
 import axios from "axios";
+import { useToast } from "@/components/ui/use-toast";
 
 const Signup = () => {
-  const searchParams = useSearchParams(); // Replaces router.query
-  const ref = searchParams.get("refId"); // Get the ref query parameter
+  const searchParams = useSearchParams();
+  const ref = searchParams.get("refId");
   const router = useRouter();
-  console.log(ref);
+  const { toast } = useToast();
+
   const { isLoaded, signUp, setActive } = useSignUp();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [pendingVerfication, setPendingVerfication] = useState(false);
 
-  if (!isLoaded) {
-    return null;
-  }
+  if (!isLoaded) return null;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!isLoaded) {
-      return;
-    }
+
+    if (!isLoaded || pendingVerfication) return;
+
+    setLoading(true);
+
     try {
       await signUp.create({ emailAddress: email, password: password });
       await signUp.prepareEmailAddressVerification({
         strategy: "email_code",
       });
+
       setPendingVerfication(true);
-    } catch (error) {
-      console.log(error);
+
+      toast({
+        title: "Verification Sent",
+        description: "Check your email for the verification code.",
+      });
+    } catch (error: any) {
+      const clerkError = error?.errors?.[0]?.message;
+
+      toast({
+        title: "Signup Failed",
+        description: clerkError
+          ? clerkError
+          : error?.message ?? "Something went wrong.",
+        variant: "destructive",
+      });
+
+      console.error("Signup error:", error);
+    } finally {
+      setLoading(false);
     }
   }
 
   async function onPressVerify(e: React.FormEvent) {
     e.preventDefault();
-    if (!isLoaded) {
-      return;
-    }
+
+    if (!isLoaded) return;
+
+    setVerifying(true);
 
     try {
       const completeSignup = await signUp.attemptEmailAddressVerification({
         code,
       });
+
       if (completeSignup.status !== "complete") {
-        console.log("error signup");
+        console.log("Error: Signup incomplete.");
+        return;
       }
 
       if (signUp.status === "complete") {
         await setActive({ session: completeSignup.createdSessionId });
-        const response = await axios.post("/api/signup-success-after-refer", {
+
+        await axios.post("/api/signup-success-after-refer", {
           refId: ref,
         });
+
         router.push("/chat");
       }
     } catch (error) {
       console.log(error);
+      toast({
+        title: "Verification Failed",
+        description: "Invalid or expired code. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setVerifying(false);
     }
   }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50">
       <div className="max-w-md w-full bg-white p-8 shadow-lg rounded-lg">
-        {/* <h1 className="text-3xl font-semibold text-center text-gray-800 mb-6">
-          {pendingVerification ? "Verify Your Email" : "Create Your Account"}
-        </h1> */}
-
         {!pendingVerfication ? (
           <form onSubmit={submit} className="space-y-6">
             <div>
@@ -117,14 +136,21 @@ const Signup = () => {
             </div>
             <button
               type="submit"
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
-              disabled={loading}
+              className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 flex items-center justify-center gap-2"
+              disabled={loading || pendingVerfication}
             >
-              {loading ? "Signing Up..." : "Sign Up"}
+              {loading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  Signing Up...
+                </>
+              ) : (
+                "Sign Up"
+              )}
             </button>
           </form>
         ) : (
-          <form className="space-y-6">
+          <form onSubmit={onPressVerify} className="space-y-6">
             <div>
               <label
                 htmlFor="code"
@@ -144,10 +170,17 @@ const Signup = () => {
             </div>
             <button
               type="submit"
-              className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-              onClick={onPressVerify}
+              className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 flex items-center justify-center gap-2 disabled:opacity-50"
+              disabled={verifying}
             >
-              Verify Email
+              {verifying ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  Verifying...
+                </>
+              ) : (
+                "Verify Email"
+              )}
             </button>
           </form>
         )}

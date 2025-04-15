@@ -72,49 +72,52 @@ const FilingCabinet = () => {
     }
   };
   return (
-    <div className="bg-white min-h-screen">
-      <div className="flex flex-col items-start mb-8 px-8 gap-2">
-        <h1 className="my-2 bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent text-xl md:text-3xl font-bold text-center mt-6">
-          Invite Friends
+    <div className="bg-gradient-to-b from-white to-slate-100 min-h-screen py-12 px-6 md:px-16">
+      <div className="text-center mb-10">
+        <h1 className="bg-gradient-to-r from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent text-3xl md:text-4xl font-bold mb-2">
+          Invite Your Friends 🚀
         </h1>
-        <p className="text-muted-foreground font-normal text-sm text-center">
-          Invite your friend so that they can take benefit out of it.
+        <p className="text-muted-foreground text-sm md:text-base">
+          Share your referral and give your friends a head start!
         </p>
       </div>
-      <div className="flex gap-4 px-2 md:px-8 overflow-scroll lg:overflow-hidden">
+
+      <div className="flex flex-col sm:flex-row items-center gap-4 justify-center">
         <Input
-          placeholder="www.ninjatextai.com/"
-          className="dropshadow-md border-[#5E85FE]"
+          value={`https://ninjatextai.com/sign-up?refId=${refId}`}
           disabled
+          className="border border-[#5E85FE] rounded-xl shadow-md w-full sm:max-w-md text-sm sm:text-base"
         />
         <Dialog>
           <DialogTrigger asChild>
-            <Button className="bg-sky-500 drop-shadow-md text-xs sm:text-base">
+            <Button className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-2 rounded-xl shadow-lg hover:brightness-110 transition-all">
               Email Link
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px] w-full">
+          <DialogContent className="sm:max-w-[425px] w-full border-none backdrop-blur-md bg-white/70 shadow-2xl rounded-2xl px-6 py-8">
             <DialogHeader>
-              <DialogTitle>
-                Enter the email of user you want to invite!
+              <DialogTitle className="text-xl font-bold text-slate-800">
+                Invite via Email
               </DialogTitle>
-              <DialogDescription className="mt-2">
-                <Input
-                  onChange={(e) => setReferralEmail(e.target.value)}
-                  className="mt-4"
-                  type="email"
-                  placeholder="Please write here!"
-                />
+              <DialogDescription className="text-sm text-slate-600">
+                Enter the email of the person you want to invite.
               </DialogDescription>
             </DialogHeader>
 
-            <DialogFooter>
-              <DialogClose>
+            <Input
+              onChange={(e) => setReferralEmail(e.target.value)}
+              type="email"
+              placeholder="user@example.com"
+              className="mt-4 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none"
+            />
+
+            <DialogFooter className="mt-6">
+              <DialogClose asChild>
                 <Button
-                  className="bg-sky-500 drop-shadow-md w-full sm:w-auto"
                   onClick={onSubmit}
+                  className="w-full sm:w-auto bg-gradient-to-r from-sky-500 to-indigo-500 text-white font-semibold px-6 py-2 rounded-xl hover:scale-105 transition-transform shadow-md"
                 >
-                  Send Email
+                  Send Invitation
                 </Button>
               </DialogClose>
             </DialogFooter>

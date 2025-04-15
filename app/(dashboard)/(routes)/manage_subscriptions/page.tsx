@@ -1,29 +1,37 @@
+import FreePlanFallback from "@/components/FreePlanFallback";
 import SubscriptionButton from "@/components/subscription-button";
+import ProWelcomeModal from "@/components/ProWelcomeModal";
 import { checkSubscription } from "@/lib/subscription";
 
 const Settings = async () => {
   const isPro = await checkSubscription();
 
+  if (!isPro) {
+    return <FreePlanFallback />;
+  }
+
   return (
-    <div className="min-h-screen bg-white">
-      <div className="flex flex-col items-start  mb-8 px-8 gap-2">
-        <h1 className="my-2 bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent text-xl md:text-3xl font-bold text-center mt-6">
-          CopNarrative Subscription
-        </h1>
-        <p className="text-muted-foreground font-normal text-sm text-center">
-          Find your subscription here!
-        </p>
-      </div>
-      <div className="px-4 lg:px-8 space-y-4">
-        <div className="text-muted-foreground text-sm">
-          {isPro
-            ? "You are currently on Pro Plan"
-            : "You are currently on Free Plan"}
+    <div className="min-h-screen bg-gradient-to-br from-white via-blue-50 to-blue-100 dark:from-[#0a0f23] dark:to-[#1e2a4a] py-12 px-4">
+      <ProWelcomeModal />
+      <div className="max-w-2xl mx-auto bg-white dark:bg-[#10162f] shadow-xl rounded-2xl p-8 border border-gray-200 dark:border-[#1e2a4a] backdrop-blur-md">
+        <div className="text-center mb-6">
+          <h1 className="text-3xl md:text-4xl font-extrabold bg-gradient-to-r from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent">
+            NinjaTextAI Pro ✨
+          </h1>
+          <p className="text-muted-foreground text-sm md:text-base mt-2">
+            You're now on the <span className="font-semibold text-blue-600 dark:text-blue-400">Pro Plan</span>. Unlock your creative power!
+          </p>
         </div>
-        <SubscriptionButton isPro={isPro} />
+  
+        <div className="bg-blue-50 dark:bg-[#18223c] p-6 rounded-xl border border-blue-100 dark:border-[#273356] text-center space-y-4">
+          <div className="text-sm text-gray-700 dark:text-gray-300">
+            Enjoy priority access, premium features, and more with your Pro subscription.
+          </div>
+          <SubscriptionButton isPro={isPro} />
+        </div>
       </div>
     </div>
   );
-};
+}  
 
 export default Settings;

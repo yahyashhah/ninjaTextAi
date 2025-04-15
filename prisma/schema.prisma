@@ -15,10 +15,12 @@ datasource db {
 }
 
 model UserApiLimit {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  userId String @unique
-  count Int @default(0)
-  refId String?
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @unique
+  count     Int      @default(0)
+  credits   Int      @default(0) // <-- Add this
+  refId     String?
+  rewarded  Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -60,6 +62,14 @@ model UserReferralLinks {
   discount Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model ReferralReward {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  referrerId     String
+  referredUserId String
+  credited       Boolean  @default(false)
+  createdAt      DateTime @default(now())
 }
 
 model UploadTemplates {

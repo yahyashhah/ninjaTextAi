@@ -37,12 +37,12 @@ export const sidebarRoutes = [
   //   href: "/department_protocol",
   //   color: "text-pink-700",
   // },
-  {
-    label: "History",
-    icon: History,
-    href: "/history",
-    color: "text-sky-500",
-  },
+  // {
+  //   label: "History",
+  //   icon: History,
+  //   href: "/history",
+  //   color: "text-sky-500",
+  // },
   {
     label: "Templates",
     icon:  NotepadTextDashedIcon,

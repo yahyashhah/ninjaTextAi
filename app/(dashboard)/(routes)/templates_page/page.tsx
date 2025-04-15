@@ -66,7 +66,7 @@ const Page = () => {
     </Link>
   </div>
   <div className="w-full h-full p-4 bg-white overflow-y-auto">
-    <div className="w-full grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+    <div className="w-full grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
       {templates.map((template) => (
         <Dialog key={template.id}>
           <DialogTrigger asChild>

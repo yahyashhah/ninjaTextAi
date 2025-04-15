@@ -11,7 +11,7 @@ export const plans = [
   },
   {
     tag: "Premium",
-    price: "39.99 $",
+    price: "19.99 $",
     line: "Per user, per month",
     description: [
       "AI-Powered Chatbot",
