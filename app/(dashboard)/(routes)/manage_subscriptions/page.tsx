@@ -2,10 +2,12 @@ import FreePlanFallback from "@/components/FreePlanFallback";
 import SubscriptionButton from "@/components/subscription-button";
 import ProWelcomeModal from "@/components/ProWelcomeModal";
 import { checkSubscription } from "@/lib/subscription";
+import { currentUser } from "@clerk/nextjs/server";
 
 const Settings = async () => {
   const isPro = await checkSubscription();
 
+  const user = await currentUser();
   if (!isPro) {
     return <FreePlanFallback />;
   }

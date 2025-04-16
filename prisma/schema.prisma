@@ -26,40 +26,39 @@ model UserApiLimit {
 }
 
 model UserSubscription {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  userId String @unique
-  stripeCustomerId String? @unique @map(name: "stripe_customer_id")
-  stripeSubscriptionId String? @unique @map(name: "stripe_subscription_id")
-  stripePriceId String? @map(name: "stripe_price_id")
+  id                     String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId                 String    @unique
+  stripeCustomerId       String?   @unique @map(name: "stripe_customer_id")
+  stripeSubscriptionId   String?   @unique @map(name: "stripe_subscription_id")
+  stripePriceId          String?   @map(name: "stripe_price_id")
   stripeCurrentPeroidEnd DateTime? @map(name: "stripe_current_period_id")
 }
 
 model UserReports {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  userId String
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String
   reportName String?
   reportText String?
-  tag String? 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  tag        String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model ReportsHistory {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  userId String
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String
   reportName String?
   reportText String?
-  tag String? 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  tag        String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model UserReferralLinks {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  userId String @unique
-  refId String?
-  discount Boolean @default(false)
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @unique
+  refId     String?
+  discount  Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -73,12 +72,12 @@ model ReferralReward {
 }
 
 model UploadTemplates {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  userId String
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String
   templateName String?
   instructions String?
-  examples String?
-  reportType String? 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  examples     String?
+  reportType   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

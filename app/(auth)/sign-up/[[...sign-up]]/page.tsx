@@ -76,13 +76,14 @@ const Signup = () => {
 
       if (signUp.status === "complete") {
         await setActive({ session: completeSignup.createdSessionId });
-
+      
         await axios.post("/api/signup-success-after-refer", {
           refId: ref,
+          userId: completeSignup.createdUserId,
         });
-
+      
         router.push("/chat");
-      }
+      }      
     } catch (error) {
       console.log(error);
       toast({

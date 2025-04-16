@@ -1,40 +1,33 @@
+// routes/api/stripe/route.ts
 import { NextResponse } from "next/server";
 import prismadb from "@/lib/prismadb";
 import { stripe } from "@/lib/stripe";
-
 import { absoluteUrl } from "@/lib/utils";
 import { auth, currentUser } from "@clerk/nextjs/server";
 
-const chatUrl = absoluteUrl("/chat") as string;
-const manage_subscriptions = absoluteUrl("/manage_subscriptions") as string;
+const chatUrl = absoluteUrl("/chat");
+const manage_subscriptions = absoluteUrl("/manage_subscriptions");
 
-let amount = 1999
-
-console.log(process.env.STRIPE_SECRET_KEY)
-
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const { userId } = auth();
+    console.log("User ID:", userId);
+    
     const user = await currentUser();
 
     if (!userId || !user) {
-      return new NextResponse("Unauthorized User", { status: 401 });
+      return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    console.log(user);
+    const referral = await prismadb.userReferralLinks.findFirst({
+      where: { refId: userId },
+    });
     
-    const reffer = await prismadb.userReferralLinks.findUnique({
-      where: {
-        userId
-      }
-    })
-
-    if(reffer?.discount === true) {
-      amount = 1520
-    }
-
+    console.log("Referral object:", referral);
+    console.log(referral?.refId);
+    
     const userSubscription = await prismadb.userSubscription.findUnique({
-      where: { userId: userId },
+      where: { userId },
     });
 
     if (userSubscription && userSubscription.stripeCustomerId) {
@@ -42,7 +35,29 @@ export async function GET() {
         customer: userSubscription.stripeCustomerId,
         return_url: manage_subscriptions,
       });
+
       return new NextResponse(JSON.stringify({ url: stripeSession.url }));
+    }
+
+    const userApiLimit = await prismadb.userApiLimit.findUnique({
+      where: { userId },
+    });
+
+    let promoCodeId: string | undefined;
+
+    if (userApiLimit?.credits && userApiLimit.credits >= 19) {
+      const coupon = await stripe.coupons.create({
+        amount_off: 1999, // $19.99
+        currency: "usd",
+        duration: "once",
+      });
+
+      const promo = await stripe.promotionCodes.create({
+        coupon: coupon.id,
+        max_redemptions: 1,
+      });
+
+      promoCodeId = promo.id;
     }
 
     const stripeSession = await stripe.checkout.sessions.create({
@@ -57,25 +72,26 @@ export async function GET() {
             currency: "USD",
             product_data: {
               name: "NinjaText-AI Pro",
-              description: "Unlimited NinjaText-AI Report Generations",
+              description: "Unlimited AI Report Generations",
             },
-            unit_amount: amount,
-            recurring: {
-              interval: "month",
-            },
+            unit_amount: 1999,
+            recurring: { interval: "month" },
           },
           quantity: 1,
         },
       ],
       metadata: {
         userId,
+        refId: referral?.userId ?? "",
+        usedCredits: promoCodeId ? "true" : "false",
       },
+      discounts: promoCodeId ? [{ promotion_code: promoCodeId }] : undefined,
     });
 
     return new NextResponse(JSON.stringify({ url: stripeSession.url }));
   } catch (error) {
-    console.log("STRIPE_ERROR", error);
-    return new NextResponse("Internal error", { status: 500 });
+    console.log("STRIPE_CHECKOUT_ERROR", error);
+    return new NextResponse("Internal Error", { status: 500 });
   }
 }
 
