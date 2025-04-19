@@ -41,18 +41,23 @@ const Signup = () => {
         description: "Check your email for the verification code.",
       });
     } catch (error: any) {
-      const clerkError = error?.errors?.[0]?.message;
-
+      const clerkError = error?.errors?.[0];
+      const errorCode = clerkError?.code;
+    
+      const message =
+        errorCode === "session_exists"
+          ? "You already have an active session. Please log out before signing up again."
+          : clerkError?.message || error?.message || "Something went wrong.";
+    
       toast({
         title: "Signup Failed",
-        description: clerkError
-          ? clerkError
-          : error?.message ?? "Something went wrong.",
+        description: message,
         variant: "destructive",
       });
-
+    
       console.error("Signup error:", error);
-    } finally {
+    }
+     finally {
       setLoading(false);
     }
   }
