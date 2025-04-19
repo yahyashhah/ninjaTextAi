@@ -17,6 +17,7 @@ import { Loader } from "@/components/loader";
 import { cn } from "@/lib/utils";
 import TextEditor from "@/components/new-editor";
 import { Empty } from "@/components/empty";
+import { useToast } from "@/components/ui/use-toast";
 
 type Template = {
   id: string;
@@ -27,6 +28,7 @@ type Template = {
 };
 const AccidentReport = () => {
   const router = useRouter();
+  const { toast } = useToast();
   const { startListening, stopListening, transcript } = useVoiceToText();
   const [prompt, setPrompt] = useState("");
   const [isListening, setIsListening] = useState(false);
@@ -67,7 +69,25 @@ const AccidentReport = () => {
       setMessage(response.data.content);
       form.reset({ prompt: "" });
     } catch (error: any) {
-      console.log(error);
+      if (error.response?.status === 403) {
+        console.log("403 triggered");
+        
+        toast({
+          title: "Free Trial Ended",
+          description: "You've reached your free usage limit.",
+          variant: "destructive",
+          action: (
+            <button
+              onClick={() => router.push("/pricing")}
+              className="text-sm text-blue-500 underline"
+            >
+              Upgrade
+            </button>
+          ),
+        });
+      } else {
+        console.log(error);
+      }
     } finally {
       router.refresh();
     }

@@ -31,7 +31,7 @@ const FilingCabinet = () => {
     try {
       await axios.post("/api/send-invite", {
         email: referralEmail,
-        referralLink: `http://localhost:3000/sign-up?refId=${refId}`,
+        referralLink: `https://ninja-text-ai.vercel.app/sign-up?refId=${refId}`,
       });
       toast({
         variant: "default",
