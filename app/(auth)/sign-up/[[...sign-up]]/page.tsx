@@ -46,7 +46,7 @@ const Signup = () => {
     
       const message =
         errorCode === "session_exists"
-          ? "You already have an active session. Please log out before signing up again."
+          ? "You already have an active session. Please log out before attempting to login again."
           : clerkError?.message || error?.message || "Something went wrong.";
     
       toast({
