@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
 import axios from "axios";
-import { FileIcon, SearchIcon } from "lucide-react";
+import { FileIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -16,9 +16,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/use-toast";
 
-type report = {
+type Report = {
   id: string;
   userId: string;
   reportName: string;
@@ -26,19 +26,25 @@ type report = {
   tag: string;
   createdAt: string;
   updatedAt: string;
-}[];
+};
 
 const FilingCabinet = () => {
   const router = useRouter();
-  const [reports, setReports] = useState<report>([]);
-  const [byName, setByName] = useState("");
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState<{ [key: string]: boolean }>({});
+  const { toast } = useToast();
 
   const getAllReports = async () => {
     try {
       const response = await axios.get("/api/get_all_history");
       setReports(response.data.reports);
     } catch (error) {
-      console.log(error);
+      console.error("Error fetching reports:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to fetch reports",
+      });
     }
   };
 
@@ -56,7 +62,47 @@ const FilingCabinet = () => {
         setReports(response.data.reports);
       }
     } catch (error) {
-      console.log(error);
+      console.error("Error filtering reports:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to filter reports",
+      });
+    }
+  };
+
+  const handleDelete = async (reportId: string) => {
+    try {
+      // Find the report to get the userId
+      const reportToDelete = reports.find(report => report.id === reportId);
+      if (!reportToDelete) return;
+  
+      setLoading(prev => ({ ...prev, [reportId]: true }));
+  
+      console.log(reportToDelete.userId, reportId);
+      
+      // Call the delete API with query parameters
+      const response = await axios.delete(
+        `/api/delete_report_history?historyId=${reportId}&userId=${reportToDelete.userId}`
+      );
+  
+      if (response.status === 200) {
+        // Update the UI by removing the deleted report
+        setReports(reports.filter(report => report.id !== reportId));
+        toast({
+          title: "Success",
+          description: "Report deleted successfully",
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting report:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete report",
+      });
+    } finally {
+      setLoading(prev => ({ ...prev, [reportId]: false }));
     }
   };
 
@@ -74,8 +120,9 @@ const FilingCabinet = () => {
         <select
           onChange={(e) => handleChange(e.target.value)}
           className="border p-2 rounded-lg w-full md:w-auto"
+          defaultValue=""
         >
-          <option value="" disabled selected>
+          <option value="" disabled>
             Filter Reports
           </option>
           <option value="all">All</option>
@@ -88,91 +135,90 @@ const FilingCabinet = () => {
           <option value="witness">Witness Statement Report</option>
           <option value="field_interview">Field Interview Report</option>
         </select>
-
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 px-2 md:px-12 overflow-y-auto">
-        {reports.length === 0 && (
+        {reports.length === 0 ? (
           <h1 className="text-lg font-bold">No file saved yet</h1>
-        )}
-
-        {reports.map((report, index) => (
-          <div key={index}>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Card
-                  key={index}
-                  className="p-4 border-black/2 bg-gray-100 flex flex-col justify-between drop-shadow-lg hover:shadow-md transition cursor-pointer"
-                >
-                  <div className="flex items-center gap-x-4">
-                    <div
-                      className={cn(
-                        `p-2 w-fit h-fit rounded-md bg-slate-100 border-gray-300 border-2`
-                      )}
+        ) : (
+          reports.map((report) => (
+            <div key={report.id}>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Card className="p-4 border-black/2 bg-gray-100 flex flex-col justify-between drop-shadow-lg hover:shadow-md transition cursor-pointer">
+                    <div className="flex items-center gap-x-4">
+                      <div className={cn(`p-2 w-fit h-fit rounded-md bg-slate-100 border-gray-300 border-2`)}>
+                        <FileIcon className={cn("w-12 h-12 text-[#5E85FE]")} />
+                      </div>
+                      <div className="flex flex-col gap-y-2">
+                        <div className="text-md">
+                          <span className="font-semibold">FileName: </span>
+                          {report.reportName}
+                        </div>
+                        <div className="text-sm">
+                          <span className="font-semibold">Date: </span>
+                          {new Date(report.createdAt).toLocaleDateString()}
+                        </div>
+                        <div className="text-sm">
+                          <span
+                            className={cn(
+                              "font-semibold text-white rounded-full p-1 px-2 text-xs drop-shadow-md",
+                              report.tag === "incident" && "bg-yellow-400",
+                              report.tag === "accident" && "bg-pink-500",
+                              report.tag === "arrest" && "bg-red-500",
+                              report.tag === "use_of_force" && "bg-purple-500",
+                              report.tag === "domestic_voilence" && "bg-sky-500",
+                              report.tag === "witness" && "bg-green-500",
+                              report.tag === "supplemental" && "bg-cyan-800"
+                            )}
+                          >
+                            {report.tag}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </DialogTrigger>
+                <DialogContent className="max-w-screen-lg">
+                  <DialogHeader>
+                    <DialogTitle>{report.reportName}</DialogTitle>
+                  </DialogHeader>
+                  <div className="w-full flex items-center space-x-2">
+                    <div className="grid flex-1 gap-2">
+                      <pre className="whitespace-pre-wrap overflow-y-scroll h-96">
+                        {report.reportText}
+                      </pre>
+                    </div>
+                  </div>
+                  <DialogFooter className="sm:justify-start">
+                    <Button
+                      onClick={() => {
+                        localStorage.setItem("id", report.id);
+                        localStorage.setItem("text", report.reportText);
+                        localStorage.setItem("name", report.reportName);
+                        localStorage.setItem("tag", report.tag);
+                        router.push("/history/view_report");
+                      }}
                     >
-                      <FileIcon className={cn("w-12 h-12 text-[#5E85FE]")} />
-                    </div>
-                    <div className="flex flex-col gap-y-2">
-                      <div className="text-md">
-                        <span className="font-semibold">FileName: </span>
-                        {report.reportName}
-                      </div>
-                      <div className="text-sm">
-                        <span className="font-semibold">Date: </span>
-                        {report.createdAt.slice(0, 10)}
-                      </div>
-                      <div className="text-sm">
-                        <span
-                          className={cn(
-                            "font-semibold text-white rounded-full p-1 px-2 text-xs drop-shadow-md",
-                            report.tag === "incident" && "bg-yellow-400",
-                            report.tag === "accident" && "bg-pink-500",
-                            report.tag === "arrest" && "bg-red-500",
-                            report.tag === "use_of_force" && "bg-purple-500",
-                            report.tag === "domestic_voilence" && "bg-sky-500",
-                            report.tag === "witness" && "bg-green-500",
-                            report.tag === "supplemental" && "bg-cyan-800"
-                          )}
-                        >
-                          {report.tag}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </DialogTrigger>
-              <DialogContent className="max-w-screen-lg">
-                <DialogHeader>
-                  <DialogTitle>{report.reportName}</DialogTitle>
-                </DialogHeader>
-                <div className="w-full flex items-center space-x-2">
-                  <div className="grid flex-1 gap-2">
-                    <pre className="whitespace-pre-wrap overflow-y-scroll h-96">
-                      {report.reportText}
-                    </pre>
-                  </div>
-                </div>
-                <DialogFooter className="sm:justify-start">
-                  <Button
-                    onClick={() => {
-                      localStorage.setItem("id", report.id);
-                      localStorage.setItem("text", report.reportText);
-                      localStorage.setItem("name", report.reportName);
-                      localStorage.setItem("tag", report.tag);
-                      router.push("/history/view_report");
-                    }}
-                  >
-                    Edit
-                  </Button>
-                  <DialogClose asChild>
-                    <Button type="button" variant="secondary">
-                      Close
+                      Edit
                     </Button>
-                  </DialogClose>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-        ))}
+                    <Button
+                      className="bg-red-500 hover:bg-red-600"
+                      onClick={() => handleDelete(report.id)}
+                      disabled={loading[report.id]}
+                    >
+                      {loading[report.id] ? "Deleting..." : "Delete"}
+                    </Button>
+                    <DialogClose asChild>
+                      <Button type="button" variant="secondary">
+                        Close
+                      </Button>
+                    </DialogClose>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

@@ -58,7 +58,7 @@ export const searchReportByName = async (name: string) => {
   return filteredReports;
 };
 
-export const updateReport = async (reportId: string, text: string) => {
+export const updateReport = async (reportId: string, text: string, reportName: string) => {
   const { userId } = auth();
 
   if (!userId) {
@@ -67,6 +67,8 @@ export const updateReport = async (reportId: string, text: string) => {
 
   await prismadb.userReports.update({
     where: { id: reportId },
-    data: { reportText: text },
+    data: { reportText: text,
+      reportName: reportName
+     },
   });
 };

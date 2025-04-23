@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   try {
     const { userId } = auth();
     const body = await req.json();
-    const { reportId, reportText } = body;
+    const { reportId, reportText, reportName } = body;
 
     if (!userId) {
       return new NextResponse("Unauthorized User", { status: 401 });
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       return new NextResponse("File is empty", { status: 400 });
     }
 
-    await updateReport(reportId, reportText);
+    await updateReport(reportId, reportText, reportName);
 
     console.log("report Updated");
     return new NextResponse("Report updated successfully", { status: 200 });

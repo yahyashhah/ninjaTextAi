@@ -39,7 +39,7 @@ const LandingNavbar = () => {
               href="/sign-up"
               className="bg-gradient-to-r from-sky-600 via-sky-500 to-sky-600 drop-shadow-lg py-2 px-3 rounded-md text-white"
             >
-              Create an account
+              Start For Free
             </a>
           </div>
           <div className="lg:hidden md:flex flex-col justify-end text-white">
@@ -49,7 +49,7 @@ const LandingNavbar = () => {
           </div>
         </div>
         {mobileDrawerOpen && (
-          <div className="fixed right-0 z-30 bg-black w-full p-12 flex flex-col justify-center items-center lg:hidden text-white">
+          <div className="fixed right-0 z-30 bg-slate-900 w-full p-12 flex flex-col justify-center items-center lg:hidden text-white">
             <ul>
               {navItems.map((item, index) => (
                 <li key={index} className="py-4 text-white">
@@ -65,7 +65,7 @@ const LandingNavbar = () => {
                 href="/sign-up"
                 className="py-2 px-3 rounded-md bg-gradient-to-r from-sky-600 via-sky-500 to-sky-600 drop-shadow-lg"
               >
-                Create an account
+                Start For Free
               </a>
             </div>
           </div>

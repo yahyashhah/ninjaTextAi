@@ -9,7 +9,7 @@ export const saveUploadTemplate = async (
   templateName: string,
   instructions: string,
   examples: string | undefined,
-  reportType: string
+  reportTypes: string[] // Change to array
 ) => {
   if (!userId) {
     return;
@@ -20,8 +20,8 @@ export const saveUploadTemplate = async (
       userId,
       templateName,
       instructions,
-      reportType,
-      ...(examples ? { examples } : {}),  // Add examples only if it has a value
+      reportTypes,
+      ...(examples ? { examples } : {}),
     },
   });
 };
@@ -64,7 +64,12 @@ export const filterUploadTemplatesByReportType = async (reportType: string) => {
   if (!userId) return;
 
   const filteredTemplates = await prisma.uploadTemplates.findMany({
-    where: { userId: userId, reportType: reportType },
+    where: { 
+      userId: userId, 
+      reportTypes: {
+        has: reportType // Check if array contains the type
+      }
+    },
   });
 
   return filteredTemplates;

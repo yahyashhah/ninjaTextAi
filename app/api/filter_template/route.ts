@@ -10,22 +10,32 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { reportType } = await req.json();
+    const { reportTypes } = await req.json();
 
-    if (!reportType || typeof reportType !== 'string') {
-      return NextResponse.json({ message: 'Invalid or missing reportType parameter' }, { status: 400 });
+    // Validate that reportTypes exists and is an array
+    if (!reportTypes || !Array.isArray(reportTypes)) {
+      return NextResponse.json(
+        { message: 'reportTypes must be an array' }, 
+        { status: 400 }
+      );
     }
 
+    // Filter templates where reportTypes contains ANY of the provided values
     const templates = await prismadb.uploadTemplates.findMany({
       where: { 
-        userId: userId, 
-        reportType: reportType,
+        userId: userId,
+        reportTypes: {
+          hasSome: reportTypes // Use hasSome to find records containing any of the array values
+        }
       },
     });
 
     return NextResponse.json({ templates }, { status: 200 });
   } catch (error) {
     console.error("Error fetching templates:", error);
-    return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { message: 'Internal server error' }, 
+      { status: 500 }
+    );
   }
 }

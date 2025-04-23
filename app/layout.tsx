@@ -5,6 +5,8 @@ import "./globals.css";
 import { ModalProvider } from "@/components/modal-provider";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toaster";
+import SessionAutoLogout from "@/components/SessionAutoLogout";
+import CheckLogoutOnReturn from "@/components/CheckLogoutOnReturn";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -23,6 +25,8 @@ export default function RootLayout({
       <html lang="en">
         <body className={cn(inter.className, "bg-slate-800")}>
           <ModalProvider />
+          <SessionAutoLogout />
+          <CheckLogoutOnReturn />
           {children}
           <Toaster/>
         </body>

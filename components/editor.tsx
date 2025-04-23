@@ -104,11 +104,13 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
       } else {
         reportText = documentText;
       }
+  
       const response = await axios.post("/api/update_report", {
-        reportText: reportText,
+        reportText,
         reportId: id,
+        reportName, // send updated name too
       });
-      console.log(response.data);
+  
       toast({
         variant: "default",
         title: "Success",
@@ -121,7 +123,7 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
         description: String(error),
       });
     }
-  };
+  };  
 
   const handleCopy = async () => {
     try {
@@ -146,7 +148,15 @@ const TextEditor = ({ text = "", id = "", name = "" }: EditorProps) => {
   return (
     <div className="container mx-auto p-4 bg-white rounded-lg shadow">
       <div className="mb-4 flex flex-wrap items-center gap-2 sm:gap-4">
-        <p className="font-semibold text-sm sm:text-md">Name: {name}</p>
+        <div className="flex items-center gap-2 sm:gap-4">
+        <p className="font-semibold text-sm sm:text-md">Name</p>
+        <Input
+          value={reportName}
+          onChange={(e) => setReportName(e.target.value)}
+          className="mt-2"
+          placeholder="Edit Report Name"
+        />
+        </div>
         <br />
         <Dialog>
           <DialogTrigger asChild>

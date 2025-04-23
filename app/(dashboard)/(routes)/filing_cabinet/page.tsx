@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/use-toast";
 
 type report = {
   id: string;
@@ -32,6 +33,8 @@ const FilingCabinet = () => {
   const router = useRouter();
   const [reports, setReports] = useState<report>([]);
   const [byName, setByName] = useState("");
+  const [loading, setLoading] = useState<{ [key: string]: boolean }>({});
+  const { toast } = useToast();
 
   const getAllReports = async () => {
     try {
@@ -52,11 +55,40 @@ const FilingCabinet = () => {
         const response = await axios.get("/api/get_all_reports");
         setReports(response.data.reports);
       } else {
-        const response = await axios.post("/api/filter_reports", { tag: value });
+        const response = await axios.post("/api/filter_reports", {
+          tag: value,
+        });
         setReports(response.data.reports);
       }
     } catch (error) {
       console.log(error);
+    }
+  };
+
+  const handleDelete = async (reportId: string, userId: string) => {
+    try {
+      setLoading((prev) => ({ ...prev, [reportId]: true }));
+
+      const response = await axios.delete(
+        `/api/delete_report?reportId=${reportId}&userId=${userId}`
+      );
+
+      if (response.status === 200) {
+        setReports(reports.filter((report) => report.id !== reportId));
+        toast({
+          title: "Success",
+          description: "Report deleted successfully",
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting report:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete report",
+      });
+    } finally {
+      setLoading((prev) => ({ ...prev, [reportId]: false }));
     }
   };
 
@@ -183,10 +215,15 @@ const FilingCabinet = () => {
                   >
                     Edit
                   </Button>
+                  <Button
+                    className="bg-red-500 hover:bg-red-600"
+                    onClick={() => handleDelete(report.id, report.userId)}
+                    disabled={loading[report.id]}
+                  >
+                    {loading[report.id] ? "Deleting..." : "Delete"}
+                  </Button>
                   <DialogClose asChild>
-                    <Button type="button" variant="secondary">
-                      Close
-                    </Button>
+                    <Button>Close</Button>
                   </DialogClose>
                 </DialogFooter>
               </DialogContent>

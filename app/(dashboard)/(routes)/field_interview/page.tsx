@@ -17,31 +17,26 @@ import { Loader } from "@/components/loader";
 import { cn } from "@/lib/utils";
 import TextEditor from "@/components/new-editor";
 import { Empty } from "@/components/empty";
+import { useToast } from "@/components/ui/use-toast";
 
 type Template = {
   id: string;
   templateName: string;
   instructions: string;
-  reportType: string;
-  createdAt: string
+  reportTypes: string[];
+  createdAt: string;
 };
 
 const FieldInterview = () => {
   const router = useRouter();
+  const { toast } = useToast();
   const { startListening, stopListening, transcript } = useVoiceToText();
   const [prompt, setPrompt] = useState("");
   const [isListening, setIsListening] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchTerm, setSearchTerm] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<Template[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-
-  useEffect(() => {
-    if (isListening) {
-      setPrompt(transcript);
-    }
-  }, [transcript, isListening]);
-
   const [message, setMessage] = useState("");
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -53,6 +48,42 @@ const FieldInterview = () => {
 
   const isLoading = form.formState.isSubmitting;
 
+  // Handle voice input
+  useEffect(() => {
+    if (isListening) {
+      setPrompt(transcript);
+    }
+  }, [transcript, isListening]);
+
+  // Fetch templates from API
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      try {
+        const response = await axios.post('/api/filter_template', {
+          reportTypes: ['field interview report'], // Now accepts an array
+        });
+        setTemplates(response.data.templates);
+        setFilteredTemplates(response.data.templates);
+      } catch (error) {
+        console.error("Error fetching templates:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load templates",
+          variant: "destructive",
+        });
+      }
+    };
+    fetchTemplates();
+  }, []);
+
+  // Filter templates based on search term
+  useEffect(() => {
+    const filtered = templates.filter(template =>
+      template.templateName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    setFilteredTemplates(filtered);
+  }, [searchTerm, templates]);
+
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
       const dataToSend = {
@@ -60,44 +91,37 @@ const FieldInterview = () => {
         prompt: prompt,
         selectedTemplate: selectedTemplate,
       };
-      console.log(dataToSend.prompt);
-      console.log(dataToSend.selectedTemplate);
   
       const response = await axios.post("/api/field_interview_report", dataToSend);
-      console.log(response.data);
       setMessage(response.data.content);
       form.reset({ prompt: "" });
     } catch (error: any) {
-      console.log(error);
+      if (error.response?.status === 403) {
+        toast({
+          title: "Free Trial Ended",
+          description: "You've reached your free usage limit.",
+          variant: "destructive",
+          action: (
+            <button
+              onClick={() => router.push("/manage_subscription")}
+              className="text-sm text-blue-500 underline"
+            >
+              Upgrade
+            </button>
+          ),
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to generate report",
+          variant: "destructive",
+        });
+        console.error("Report generation error:", error);
+      }
     } finally {
       router.refresh();
     }
-  };  
-
-
-  // Fetch templates from API
-  useEffect(() => {
-    const fetchTemplates = async () => {
-      try {
-        const response = await axios.post('/api/filter_template', {
-          reportType: 'field interview report',
-        });
-        setTemplates(response.data.templates);
-        setFilteredTemplates(response.data.templates);
-      } catch (error) {
-        console.error("Error fetching templates:", error);
-      }
-    };
-    fetchTemplates();
-  }, []);
-
-  useEffect(() => {
-    const filtered = templates.filter(template =>
-      template.templateName.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setFilteredTemplates(filtered);
-  }, [searchTerm, templates]);
-  
+  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-74px)] bg-gray-100">
@@ -107,29 +131,31 @@ const FieldInterview = () => {
           onClick={() => router.back()}
         />
         <h1 className="text-lg font-semibold bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent">
-        Field Interview Report
+          Field Interview Report
         </h1>
       </div>
       <div className="px-4 lg:px-8 flex-1 py-4">
         <div
           id="message"
-          className="space-y-4 mt-4 overflow-y-auto max-h-[calc(100vh-180px)]" // Adjust max-height as needed
+          className="space-y-4 mt-4 overflow-y-auto max-h-[calc(100vh-180px)]"
         >
           {isLoading && (
-            <div className="p-8 rounded-lg w-full flex items-center justify-center bg-gray-200">
+            <div className="p-8 rounded-lg w-full flex items-center justify-center bg-white">
               <Loader />
             </div>
           )}
           {message.length === 0 && !isLoading && (
-            <Empty searchTerm={searchTerm} setSearchTerm={setSearchTerm} filteredTemplates={filteredTemplates} selectedTemplate={selectedTemplate} setSelectedTemplate={setSelectedTemplate} />
+            <Empty 
+              searchTerm={searchTerm} 
+              setSearchTerm={setSearchTerm} 
+              filteredTemplates={filteredTemplates} 
+              selectedTemplate={selectedTemplate} 
+              setSelectedTemplate={setSelectedTemplate} 
+            />
           )}
           <div className="flex flex-col-reverse gap-y-4">
             {message.length > 0 && (
-              <div
-                className={cn(
-                  "p-6 w-full flex items-start gap-x-8 rounded-lg bg-sky-200"
-                )}
-              >
+              <div className={cn("p-6 w-full flex items-start gap-x-8 rounded-lg bg-sky-200")}>
                 <TextEditor text={message} tag="incident" />
               </div>
             )}

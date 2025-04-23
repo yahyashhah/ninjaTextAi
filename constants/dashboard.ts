@@ -37,12 +37,6 @@ export const sidebarRoutes = [
   //   href: "/department_protocol",
   //   color: "text-pink-700",
   // },
-  // {
-  //   label: "History",
-  //   icon: History,
-  //   href: "/history",
-  //   color: "text-sky-500",
-  // },
   {
     label: "Templates",
     icon:  NotepadTextDashedIcon,
@@ -60,6 +54,12 @@ export const sidebarRoutes = [
     icon: DollarSign,
     href: "/manage_subscriptions",
     color: "text-pink-400",
+  },
+  { 
+    label: "History",
+    icon: History,
+    href: "/history",
+    color: "text-sky-500",
   },
   {
     label: "Refer a friend",

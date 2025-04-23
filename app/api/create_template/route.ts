@@ -3,20 +3,17 @@ import { auth } from '@clerk/nextjs/server';
 import { saveUploadTemplate } from '@/lib/templates';
 
 export async function POST(req: NextRequest) {
-  const { templateName, instructions, examples, reportType } = await req.json();
+  const { templateName, instructions, examples, reportTypes } = await req.json(); // Change to reportTypes
 
   // Get user ID from Clerk auth
-  const { userId } = auth(); // Ensure you pass the req object here
+  const { userId } = auth();
 
-  // Check if user ID exists
   if (!userId) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
   }
-  console.log(examples);
   
-  // Save the upload template
   try {
-    await saveUploadTemplate(userId, templateName, instructions, examples, reportType);
+    await saveUploadTemplate(userId, templateName, instructions, examples, reportTypes);
     return NextResponse.json({ message: 'Template saved successfully' }, { status: 201 });
   } catch (error) {
     console.error('Error saving template:', error);

@@ -94,7 +94,7 @@ const FilingCabinet = () => {
             Get $19.99 in credit for every person you refer to NinjaTextAI 💖
           </h2>
           <p className="text-muted-foreground mt-1">
-            You will receive the credit when the person you invite starts the subscription. They will also receive $19 in credits to use on the first month.
+            You will receive the credit when the person you invite starts the subscription. They will also receive $19.99 in credits to use on the first month.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 mt-4">

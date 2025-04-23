@@ -4,7 +4,7 @@ import Image from "next/image";
 interface Template {
   id: string;
   templateName: string;
-  reportType: string;
+  reportTypes: string[];
   createdAt: string;
   instructions: string; 
 }
@@ -41,27 +41,28 @@ export const Empty = ({
       />
       {isFocused && (
         <div className="border rounded shadow p-2 max-h-60 overflow-y-auto">
-          {filteredTemplates.length > 0 ? (
-            filteredTemplates.map((template) => (
-              <div
-                key={template.id}
-                className={`p-2 hover:bg-gray-100 w-full flex justify-between items-center cursor-pointer rounded ${
-                  selectedTemplate?.id === template.id ? "bg-gray-200" : ""
-                }`}
-                onMouseDown={() => setSelectedTemplate(template)}
-              >
-                <div>
-                <strong>{template.templateName}</strong>
-                <p className="text-xs text-gray-400">{template.reportType}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-400">{template.createdAt.slice(0, 10)}</p>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p className="text-gray-500">No templates found</p>
-          )}
+          {filteredTemplates.map((template) => (
+  <div
+    key={template.id}
+    className={`p-2 hover:bg-gray-100 w-full flex justify-between items-center cursor-pointer rounded ${
+      selectedTemplate?.id === template.id ? "bg-gray-200" : ""
+    }`}
+    onMouseDown={() => setSelectedTemplate(template)}
+  >
+    <div>
+      <strong>{template.templateName}</strong>
+      {/* Join the array into a string for display */}
+      <p className="text-xs text-gray-400">
+        {template.reportTypes.join(", ")}
+      </p>
+    </div>
+    <div>
+      <p className="text-sm text-gray-400">
+        {new Date(template.createdAt).toLocaleDateString()}
+      </p>
+    </div>
+  </div>
+))}
         </div>
       )}
     </div>

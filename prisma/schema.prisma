@@ -77,7 +77,7 @@ model UploadTemplates {
   templateName String?
   instructions String?
   examples     String?
-  reportType   String?
+  reportTypes  String[] // Change to an array of strings
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
