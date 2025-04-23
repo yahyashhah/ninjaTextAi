@@ -196,7 +196,7 @@ const Signup = () => {
         {/* Divider */}
         <div className="mt-6 border-t pt-4 text-center text-sm text-gray-500">
           Already have an account?{" "}
-          <Link href="/login" className="text-blue-600 hover:underline font-medium">
+          <Link href="/sign-in" className="text-blue-600 hover:underline font-medium">
             Login instead
           </Link>
         </div>

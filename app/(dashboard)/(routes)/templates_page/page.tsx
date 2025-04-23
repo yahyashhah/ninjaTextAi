@@ -12,7 +12,7 @@ interface Template {
   id: string;
   templateName: string;
   instructions: string;
-  reportType: string;
+  reportTypes: string[];
   examples: string;
 }
 
@@ -93,7 +93,7 @@ const Page = () => {
                 </pre>
                 <div className="flex items-center gap-2">
                   <label>Report Type:</label>
-                  <p className="font-semibold">{template.reportType}</p>
+                  <p className="font-semibold">{template.reportTypes.join(', ')}</p>
                 </div>
               </div>
             </div>
@@ -104,7 +104,7 @@ const Page = () => {
                   localStorage.setItem("template_id", template.id);
                   localStorage.setItem("template_text", template.instructions);
                   localStorage.setItem("template_name", template.templateName);
-                  localStorage.setItem("template_report", template.reportType);
+                  localStorage.setItem("template_report", JSON.stringify(template.reportTypes));
                   localStorage.setItem("template_example", template.examples);
                   router.push("/templates_page/view_template");
                 }}
