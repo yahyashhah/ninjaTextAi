@@ -32,6 +32,7 @@ type report = {
 const FilingCabinet = () => {
   const router = useRouter();
   const [reports, setReports] = useState<report>([]);
+  const [masterReports, setMasterReports] = useState<report>([]);
   const [byName, setByName] = useState("");
   const [loading, setLoading] = useState<{ [key: string]: boolean }>({});
   const { toast } = useToast();
@@ -40,6 +41,7 @@ const FilingCabinet = () => {
     try {
       const response = await axios.get("/api/get_all_reports");
       setReports(response.data.reports);
+      setMasterReports(response.data.reports);
     } catch (error) {
       console.log(error);
     }
@@ -52,13 +54,10 @@ const FilingCabinet = () => {
   const handleChange = async (value: string) => {
     try {
       if (value === "all") {
-        const response = await axios.get("/api/get_all_reports");
-        setReports(response.data.reports);
+        setReports(masterReports);
       } else {
-        const response = await axios.post("/api/filter_reports", {
-          tag: value,
-        });
-        setReports(response.data.reports);
+        const filtered = masterReports.filter((report) => report.tag === value);
+        setReports(filtered);
       }
     } catch (error) {
       console.log(error);
@@ -74,7 +73,9 @@ const FilingCabinet = () => {
       );
 
       if (response.status === 200) {
-        setReports(reports.filter((report) => report.id !== reportId));
+        const updated = reports.filter((report) => report.id !== reportId);
+        setReports(updated);
+        setMasterReports(updated);
         toast({
           title: "Success",
           description: "Report deleted successfully",
@@ -92,15 +93,11 @@ const FilingCabinet = () => {
     }
   };
 
-  const SearchFileByName = async () => {
-    try {
-      const response = await axios.post("/api/search_by_name", {
-        name: byName,
-      });
-      setReports(response.data.reports);
-    } catch (error) {
-      console.log(error);
-    }
+  const SearchFileByName = () => {
+    const filtered = masterReports.filter((report) =>
+      report.reportName.toLowerCase().includes(byName.toLowerCase())
+    );
+    setReports(filtered);
   };
 
   return (
@@ -113,6 +110,7 @@ const FilingCabinet = () => {
           See all your files here!
         </p>
       </div>
+
       <div className="flex flex-col md:flex-row justify-between items-center px-2 md:px-8 mb-4 gap-4">
         <select
           onChange={(e) => handleChange(e.target.value)}
@@ -137,12 +135,14 @@ const FilingCabinet = () => {
             className="w-full md:w-auto"
             placeholder="Search by filename"
             onChange={(e) => setByName(e.target.value)}
+            value={byName}
           />
           <Button onClick={SearchFileByName} className="w-fit h-fit">
             <SearchIcon />
           </Button>
         </div>
       </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 px-2 md:px-12 overflow-y-auto">
         {reports.length === 0 && (
           <h1 className="text-lg font-bold">No file saved yet</h1>
@@ -152,17 +152,10 @@ const FilingCabinet = () => {
           <div key={index}>
             <Dialog>
               <DialogTrigger asChild>
-                <Card
-                  key={index}
-                  className="p-4 border-black/2 bg-gray-100 flex flex-col justify-between drop-shadow-lg hover:shadow-md transition cursor-pointer"
-                >
+                <Card className="p-4 border-black/2 bg-gray-100 flex flex-col justify-between drop-shadow-lg hover:shadow-md transition cursor-pointer">
                   <div className="flex items-center gap-x-4">
-                    <div
-                      className={cn(
-                        `p-2 w-fit h-fit rounded-md bg-slate-100 border-gray-300 border-2`
-                      )}
-                    >
-                      <FileIcon className={cn("w-12 h-12 text-[#5E85FE]")} />
+                    <div className="p-2 w-fit h-fit rounded-md bg-slate-100 border-gray-300 border-2">
+                      <FileIcon className="w-12 h-12 text-[#5E85FE]" />
                     </div>
                     <div className="flex flex-col gap-y-2">
                       <div className="text-md">

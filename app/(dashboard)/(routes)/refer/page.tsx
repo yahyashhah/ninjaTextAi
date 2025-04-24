@@ -132,11 +132,6 @@ const FilingCabinet = () => {
               </DialogContent>
             </Dialog>
           </div>
-
-          <div className="mt-2 flex gap-4 text-blue-600 underline text-sm">
-            <a href={`mailto:?subject=Join NinjaTextAI&body=Use this link: https://ninjatextai.com/sign-up?refId=${refId}`}>Email</a>
-            <a href={`sms:?body=Join NinjaTextAI using this link: https://ninjatextai.com/sign-up?refId=${refId}`}>SMS</a>
-          </div>
         </div>
 
         {/* Tips Section */}

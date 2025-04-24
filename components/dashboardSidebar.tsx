@@ -34,7 +34,7 @@ const Sidebar = ({ apiLimitCount = 0, isPro = false }: SideBarProps) => {
             key={route.href}
             href={route.href}
             className={cn(
-              "text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:text-white hover:bg-white/10 hover:drop-shadow-xl hover:rounded-lg transition",
+              "text-sm group flex p-3 my-1 w-full justify-start font-medium cursor-pointer hover:text-white hover:bg-white/10 hover:drop-shadow-xl hover:rounded-lg transition",
               pathname === route.href
                 ? "text-white bg-[#3D3D3D] rounded-lg"
                 : "text-white rounded-lg"
