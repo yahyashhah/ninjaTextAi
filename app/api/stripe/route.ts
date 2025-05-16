@@ -4,6 +4,7 @@ import { stripe } from "@/lib/stripe";
 import { absoluteUrl } from "@/lib/utils";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isOrgAdmin } from "@/lib/clerk-utils";
+import Stripe from "stripe";
 
 const chatUrl = absoluteUrl("/chat").toString(); // Ensure it's a string
 const manage_subscriptions = absoluteUrl("/manage_subscriptions").toString(); // Ensure it's a string
@@ -74,41 +75,46 @@ export async function GET(req: Request) {
       promoCodeId = promo.id;
     }
 
-    // Prepare line items based on checkout type
-    const line_items = isOrgCheckout
-      ? [{
-          price: process.env.STRIPE_ORG_PRICE_ID,
-          quantity: 1, // Or calculate based on member count
-        }]
-      : [{
-          price_data: {
-            currency: "USD",
-            product_data: {
-              name: "NinjaText-AI Pro",
-              description: "Unlimited AI Report Generations",
-            },
-            unit_amount: 1999,
-            recurring: { interval: "month" },
-          },
-          quantity: 1,
-        }];
-
-    // Create checkout session
-    const stripeSession = await stripe.checkout.sessions.create({
-      success_url: chatUrl,  // Ensure it's a string
-      cancel_url: manage_subscriptions,  // Ensure it's a string
-      mode: "subscription",
-      billing_address_collection: "auto",
-      customer_email: user.emailAddresses[0].emailAddress,
-      line_items,
-      metadata: {
-        type: isOrgCheckout ? "organization" : "individual",
-        ...(isOrgCheckout ? { clerkOrgId: orgId } : { userId }),
-        refId: referral?.userId ?? "",
-        usedCredits: promoCodeId ? "true" : "false",
+    const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] = isOrgCheckout
+  ? [{
+      price: process.env.STRIPE_ORG_PRICE_ID as string,
+      quantity: 1,
+    }]
+  : [{
+      price_data: {
+        currency: "usd",
+        product_data: {
+          name: "NinjaText-AI Pro",
+          description: "Unlimited AI Report Generations",
+        },
+        unit_amount: 1999,
+        recurring: {
+          interval: "month" as const,
+        },
       },
-      discounts: promoCodeId ? [{ promotion_code: promoCodeId }] : undefined,
-    });
+      quantity: 1,
+    }];
+
+const metadata: Stripe.MetadataParam = {
+  type: isOrgCheckout ? "organization" : "individual",
+  refId: referral?.userId ?? "",
+  usedCredits: promoCodeId ? "true" : "false",
+  ...(isOrgCheckout && orgId ? { clerkOrgId: orgId } : { userId: userId ?? "" }),
+};
+
+const sessionParams: Stripe.Checkout.SessionCreateParams = {
+  success_url: chatUrl,
+  cancel_url: manage_subscriptions,
+  payment_method_types: ['card'],
+  mode: "subscription",
+  billing_address_collection: "auto",
+  customer_email: user.emailAddresses[0].emailAddress,
+  line_items,
+  metadata,
+  ...(promoCodeId ? { discounts: [{ promotion_code: promoCodeId }] } : {}),
+};
+
+const stripeSession = await stripe.checkout.sessions.create(sessionParams);
 
     return new NextResponse(JSON.stringify({ url: stripeSession.url }));
   } catch (error) {
