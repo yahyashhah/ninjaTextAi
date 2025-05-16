@@ -7,9 +7,10 @@ import { useState } from "react";
 
 interface SubscriptionButtonProps {
   isPro: boolean;
+  proAccessGrantedBy?: string | null;
 }
 
-const SubscriptionButton = ({ isPro = false }: SubscriptionButtonProps) => {
+const SubscriptionButton = ({ isPro = false, proAccessGrantedBy }: SubscriptionButtonProps) => {
   const [loading, setLoading] = useState(false);
   const onClick = async () => {
     try {
@@ -26,17 +27,17 @@ const SubscriptionButton = ({ isPro = false }: SubscriptionButtonProps) => {
 
   return (
     <Button
-      disabled={loading}
-      className={
-        isPro
-          ? "text-white"
-          : "bg-gradient-to-r from-indigo-600 via-purple-400 to-pink-600 text-white items-center"
-      }
-      onClick={onClick}
-    >
-      {isPro ? "Manage Subscription" : "Upgrade"}
-      {!isPro && <Zap className="w-4 h-4 ml-2 fill-white" />}
-    </Button>
+  disabled={loading || (isPro && !!proAccessGrantedBy)}
+  className={
+    isPro
+      ? "text-white"
+      : "bg-gradient-to-r from-indigo-600 via-purple-400 to-pink-600 text-white items-center"
+  }
+  onClick={onClick}
+>
+  {isPro ? "Manage Subscription" : "Upgrade"}
+  {!isPro && <Zap className="w-4 h-4 ml-2 fill-white" />}
+</Button>
   );
 };
 

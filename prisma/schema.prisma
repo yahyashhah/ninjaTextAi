@@ -1,12 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
-  // previewFeatures = ["mongodb"]
 }
 
 datasource db {
@@ -17,26 +10,84 @@ datasource db {
 model UserApiLimit {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   userId    String   @unique
+  user      User     @relation(fields: [userId], references: [clerkUserId])
   count     Int      @default(0)
-  credits   Int      @default(0) // <-- Add this
+  credits   Int      @default(0)
   refId     String?
   rewarded  Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-model UserSubscription {
+model User {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  clerkUserId      String   @unique
+  firstName        String?
+  lastName         String?
+  email            String? @unique
+  profileImageUrl  String?
+  isPro            Boolean  @default(false)
+  proAccessGrantedBy String? 
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  apiLimit         UserApiLimit?
+  subscription     UserSubscription?
+  reports          UserReports[]
+  reportsHistory   ReportsHistory[]
+  referralLink     UserReferralLinks?
+  referrals        ReferralReward[] @relation("referrals")
+  referredBy       ReferralReward[] @relation("referredBy")
+  templates        UploadTemplates[]
+  organizationMemberships OrganizationMember[]  // <-- ADD THIS LINE
+}
+
+model OrganizationSubscription {
   id                     String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId                 String    @unique
+  clerkOrgId             String    @unique
   stripeCustomerId       String?   @unique @map(name: "stripe_customer_id")
   stripeSubscriptionId   String?   @unique @map(name: "stripe_subscription_id")
   stripePriceId          String?   @map(name: "stripe_price_id")
-  stripeCurrentPeroidEnd DateTime? @map(name: "stripe_current_period_id")
+  stripeSeatPriceId      String?
+  stripeCurrentPeriodEnd DateTime? @map(name: "stripe_current_period_end")
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  baseSeats              Int       @default(5)
+  extraSeats             Int       @default(0)
+  totalSeats             Int       @default(5)
+  
+  members                OrganizationMember[]
+}
+
+model OrganizationMember {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String
+  userId         String
+  role           String   @default("member")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   OrganizationSubscription @relation(fields: [organizationId], references: [clerkOrgId])
+  user           User                     @relation(fields: [userId], references: [clerkUserId])
+  
+  @@unique([organizationId, userId])
+}
+
+model UserSubscription {
+  id                     String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId                 String    @unique
+  user                   User      @relation(fields: [userId], references: [clerkUserId])
+  stripeCustomerId       String?   @unique @map(name: "stripe_customer_id")
+  stripeSubscriptionId   String?   @unique @map(name: "stripe_subscription_id")
+  stripePriceId          String?   @map(name: "stripe_price_id")
+  stripeCurrentPeriodEnd DateTime? @map(name: "stripe_current_period_end")
 }
 
 model UserReports {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
   userId     String
+  user       User     @relation(fields: [userId], references: [clerkUserId])
   reportName String?
   reportText String?
   tag        String?
@@ -47,6 +98,7 @@ model UserReports {
 model ReportsHistory {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
   userId     String
+  user       User     @relation(fields: [userId], references: [clerkUserId])
   reportName String?
   reportText String?
   tag        String?
@@ -57,6 +109,7 @@ model ReportsHistory {
 model UserReferralLinks {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   userId    String   @unique
+  user      User     @relation(fields: [userId], references: [clerkUserId])
   refId     String?
   discount  Boolean  @default(false)
   createdAt DateTime @default(now())
@@ -66,7 +119,9 @@ model UserReferralLinks {
 model ReferralReward {
   id             String   @id @default(auto()) @map("_id") @db.ObjectId
   referrerId     String
+  referrer       User     @relation("referrals", fields: [referrerId], references: [clerkUserId])
   referredUserId String
+  referred       User     @relation("referredBy", fields: [referredUserId], references: [clerkUserId])
   credited       Boolean  @default(false)
   createdAt      DateTime @default(now())
 }
@@ -74,10 +129,11 @@ model ReferralReward {
 model UploadTemplates {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
   userId       String
+  user         User     @relation(fields: [userId], references: [clerkUserId])
   templateName String?
   instructions String?
   examples     String?
-  reportTypes  String[] // Change to an array of strings
+  reportTypes  String[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }

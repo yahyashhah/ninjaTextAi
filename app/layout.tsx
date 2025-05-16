@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toaster";
 import SessionAutoLogout from "@/components/SessionAutoLogout";
 import CheckLogoutOnReturn from "@/components/CheckLogoutOnReturn";
+import { ClientRootLayout } from "./ClientRootLayout";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -27,7 +28,7 @@ export default function RootLayout({
           <ModalProvider />
           <SessionAutoLogout />
           <CheckLogoutOnReturn />
-          {children}
+          <ClientRootLayout>{children}</ClientRootLayout>
           <Toaster/>
         </body>
       </html>

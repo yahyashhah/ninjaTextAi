@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { Montserrat } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import FreeCounter from "./free-counter";
 // import FreeCounter from "./free-counter";
 
@@ -19,6 +19,7 @@ interface SideBarProps {
 
 const Sidebar = ({ apiLimitCount = 0, isPro = false }: SideBarProps) => {
   const pathname = usePathname();
+  const router = useRouter();
   return (
     <div className="space-y-4 py-3 flex flex-col h-full bg-[#161717] text-white drop-shadow-xl">
       <div className="px-2 py-2">
