@@ -1,9 +1,13 @@
+"use client"
 import React from "react";
 import { Button } from "./ui/button";
 import Image from "next/image";
 import { ArrowRight } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 const LandingNarrative = () => {
+  const router = useRouter();
+
   return (
     <div className="bg-white p-32">
       <div className="flex items-center justify-center">
@@ -22,7 +26,7 @@ const LandingNarrative = () => {
               precise reports, ultimately improving operational efficiency and
               effectiveness in maintaining public safety.
             </p>
-            <Button className="flex items-center gap-x-2 w-fit px-4 bg-gradient-to-r text-md font-bold from-sky-600 via-sky-500 to-sky-600 drop-shadow-lg">Start For Free  <ArrowRight /></Button>
+            <Button onClick={() => router.push("/sign-up")} className="flex items-center gap-x-2 w-fit px-4 bg-gradient-to-r text-md font-bold from-sky-600 via-sky-500 to-sky-600 drop-shadow-lg">Start For Free  <ArrowRight /></Button>
           </div>
         </div>
         <div className="flex basis-1/2 items-center justify-center ">

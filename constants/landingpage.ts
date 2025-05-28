@@ -121,4 +121,5 @@ export const navItems = [
   { label: "Features", href: "/#features" },
   { label: "Pricing", href: "/#pricing" },
   { label: "FAQs", href: "/#faqs" },
+  { label: "Contact Us", href: "/#contact us" },
 ];

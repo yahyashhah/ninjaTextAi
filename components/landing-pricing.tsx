@@ -76,7 +76,7 @@ const LandingPricing = () => {
                     <Button
                       className={cn(
                         plan.tag === "Free"
-                          ? "bg-gray-300 text-black"
+                          ? "bg-gray-300 text-black hover:text-white"
                           : "bg-sky-600",
                         "drop-shadow-md"
                       )}

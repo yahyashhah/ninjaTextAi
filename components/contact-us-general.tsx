@@ -77,7 +77,7 @@ export default function ContactUsGeneralForm() {
   };
 
   return (
-    <div className="mt-12 mx-6 lg:mx-32 border-2 p-4 rounded-xl bg-white py-2 mb-6">
+    <div id="contact us" className="mt-12 mx-6 lg:mx-32 border-2 p-4 rounded-xl bg-white py-2 mb-6">
       <div className="p-4">
         <h2 className="text-3xl font-bold">General Contact Form</h2>
         <p className="text-muted-foreground mt-2">
