@@ -74,18 +74,18 @@ const Dashboard = () => {
                       <div className={cn(
                         `p-3 w-fit rounded-lg transition-all group-hover:scale-110`,
                         tool.bgColor,
-                        tool.hoverBgColor || "group-hover:bg-blue-100"
+                        "group-hover:bg-blue-100"
                       )}>
                         <tool.icon className={cn(
                           "w-6 h-6 md:w-7 md:h-7 transition-colors",
                           tool.color,
-                          tool.hoverColor || "group-hover:text-blue-600"
+                          "group-hover:text-blue-600"
                         )} />
                       </div>
                       <div>
                         <h3 className="font-semibold text-gray-800 text-base">{tool.label}</h3>
                         <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                          {tool.description || "Create professional police reports"}
+                          "Create professional police reports"
                         </p>
                       </div>
                     </div>
