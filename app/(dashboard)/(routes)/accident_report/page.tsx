@@ -1,7 +1,7 @@
 "use client";
 
 import * as z from "zod";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useVoiceToText } from "react-speakup";
 import { useRouter } from "next/navigation";
 import axios from "axios";
@@ -9,7 +9,29 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { formSchema } from "./constant";
 
-import { ArrowLeft, ArrowUp, Mic, MicOff } from "lucide-react";
+import { 
+  ArrowLeft, 
+  ArrowUp, 
+  Mic, 
+  MicOff, 
+  Plus, 
+  ChevronDown,
+  FileText,
+  Search,
+  LayoutTemplate,
+  AlertTriangle,
+  ListChecks,
+  Calendar,
+  Clock,
+  MapPin,
+  Car,
+  User,
+  ClipboardList,
+  Pause,
+  Play,
+  X,
+  ChevronsUpDown
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
@@ -18,12 +40,18 @@ import { cn } from "@/lib/utils";
 import TextEditor from "@/components/new-editor";
 import { Empty } from "@/components/empty";
 import { useToast } from "@/components/ui/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type Template = {
   id: string;
   templateName: string;
   instructions: string;
-  reportTypes: string[]; // Changed from reportType: string
+  reportTypes: string[];
   createdAt: string;
 };
 
@@ -33,11 +61,18 @@ const AccidentReport = () => {
   const { startListening, stopListening, transcript } = useVoiceToText();
   const [prompt, setPrompt] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<Template[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [message, setMessage] = useState("");
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [showRecordingControls, setShowRecordingControls] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const timerRef = useRef<NodeJS.Timeout>();
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -46,24 +81,92 @@ const AccidentReport = () => {
     },
   });
 
-  const isLoading = form.formState.isSubmitting;
+  // Format time to 00:00:00
+  const formatTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    return [
+      hours.toString().padStart(2, '0'),
+      minutes.toString().padStart(2, '0'),
+      secs.toString().padStart(2, '0')
+    ].join(':');
+  };
 
-  // Handle voice input
+  // Start recording handler
+  const startRecording = () => {
+    startListening();
+    setIsListening(true);
+    setIsPaused(false);
+    setRecordingTime(0);
+    setShowRecordingControls(true);
+    timerRef.current = setInterval(() => {
+      setRecordingTime(prev => prev + 1);
+    }, 1000);
+  };
+
+  // Pause recording handler
+  const pauseRecording = () => {
+    stopListening();
+    setIsPaused(true);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+  };
+
+  // Resume recording handler
+  const resumeRecording = () => {
+    startListening();
+    setIsPaused(false);
+    timerRef.current = setInterval(() => {
+      setRecordingTime(prev => prev + 1);
+    }, 1000);
+  };
+
+  // Stop recording handler
+  const stopRecording = () => {
+    stopListening();
+    setIsListening(false);
+    setIsPaused(false);
+    setShowRecordingControls(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+  };
+
+  // Submit recording handler
+  const submitRecording = () => {
+    stopRecording();
+    form.handleSubmit(onSubmit)();
+  };
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (isListening) {
       setPrompt(transcript);
     }
   }, [transcript, isListening]);
 
-  // Fetch templates from API
   useEffect(() => {
     const fetchTemplates = async () => {
       try {
         const response = await axios.post('/api/filter_template', {
-          reportTypes: ['accident report'], // Now accepts an array
+          reportTypes: ['accident report'],
         });
-        setTemplates(response.data.templates);
-        setFilteredTemplates(response.data.templates);
+        const sortedTemplates = response.data.templates.sort((a: Template, b: Template) => {
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+        setTemplates(sortedTemplates);
+        setFilteredTemplates(sortedTemplates);
       } catch (error) {
         console.error("Error fetching templates:", error);
         toast({
@@ -76,142 +179,410 @@ const AccidentReport = () => {
     fetchTemplates();
   }, []);
 
-  // Filter templates based on search term
   useEffect(() => {
     const filtered = templates.filter(template =>
       template.templateName.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    ).sort((a, b) => {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
     setFilteredTemplates(filtered);
   }, [searchTerm, templates]);
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
+      setIsLoading(true);
+      
+      if (!prompt.trim()) {
+        toast({
+          title: "Empty Content",
+          description: "Please provide some details about the accident",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const dataToSend = {
         ...values,
-        prompt: prompt,
-        selectedTemplate: selectedTemplate,
+        prompt: prompt.trim(),
+        selectedTemplate: selectedTemplate || undefined,
       };
-  
-      const response = await axios.post("/api/accident_report", dataToSend);
-      setMessage(response.data.content);
-      form.reset({ prompt: "" });
-    } catch (error: any) {
-      if (error.response?.status === 403) {
-        toast({
-          title: "Free Trial Ended",
-          description: "You've reached your free usage limit.",
-          variant: "destructive",
-          action: (
-            <button
-              onClick={() => router.push("/manage_subscription")}
-              className="text-sm text-blue-500 underline"
-            >
-              Upgrade
-            </button>
-          ),
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to generate report",
-          variant: "destructive",
-        });
-        console.error("Report generation error:", error);
+
+      console.log("Sending data to API:", dataToSend);
+      
+      const response = await axios.post("/api/accident_report", dataToSend, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.data?.content) {
+        throw new Error("No content in response");
       }
+
+      setMessage(response.data.content);
+      setPrompt("");
+      form.reset();
+      setSelectedTemplate(null);
+
+    } catch (error: any) {
+      console.error("Submission error:", error);
+      
+      if (error.response) {
+        console.error("Response data:", error.response.data);
+        console.error("Response status:", error.response.status);
+      }
+
+      toast({
+        title: "Submission Error",
+        description: error.response?.data?.message || error.message || "Failed to submit report",
+        variant: "destructive",
+      });
     } finally {
-      router.refresh();
+      setIsLoading(false);
     }
   };
 
+  console.log(message, isLoading);
+  
   return (
-    <div className="flex flex-col h-[calc(100vh-74px)] bg-gray-100">
-      <div className="w-full flex justify-between items-center p-4 px-6 bg-white shadow-md rounded-b-lg">
-        <ArrowLeft
-          className="cursor-pointer hover:animate-pulse text-xl"
-          onClick={() => router.back()}
-        />
-        <h1 className="text-lg font-semibold bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent">
-          Accident Report
-        </h1>
-      </div>
-      <div className="px-4 lg:px-8 flex-1 py-4">
-        <div
-          id="message"
-          className="space-y-4 mt-4 overflow-y-auto max-h-[calc(100vh-180px)]"
-        >
-          {isLoading && (
-            <div className="p-8 rounded-lg w-full flex items-center justify-center bg-white">
-              <Loader />
-            </div>
-          )}
-          {message.length === 0 && !isLoading && (
-            <Empty 
-              searchTerm={searchTerm} 
-              setSearchTerm={setSearchTerm} 
-              filteredTemplates={filteredTemplates} 
-              selectedTemplate={selectedTemplate} 
-              setSelectedTemplate={setSelectedTemplate} 
-            />
-          )}
-          <div className="flex flex-col-reverse gap-y-4">
-            {message.length > 0 && (
-              <div className={cn("p-6 w-full flex items-start gap-x-8 rounded-lg bg-sky-200")}>
-                <TextEditor text={message} tag="accident" />
-              </div>
-            )}
+    <div className="flex flex-col h-[calc(100vh-87px)] bg-gray-50">
+      {/* Header Section */}
+      <div className="w-full flex justify-between items-center p-4 px-6 bg-white shadow-sm border-b">
+        <div className="flex items-center space-x-4">
+          <ArrowLeft
+            className="cursor-pointer text-gray-600 hover:text-gray-900 transition-colors"
+            onClick={() => router.back()}
+            size={20}
+          />
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="h-5 w-5 text-orange-500" />
+            <h1 className="text-lg font-semibold text-gray-800">
+              Accident Report
+            </h1>
           </div>
         </div>
       </div>
-      <div className="bg-white px-4 lg:px-8 py-2 bottom-0 left-0 w-full flex items-center border-t border-gray-200 shadow-lg">
+
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        {/* Show loading state regardless of template selection */}
+        {isLoading ? (
+          <div className="max-w-4xl mx-auto h-64 flex flex-col items-center justify-center rounded-lg">
+            <Loader />
+            <p className="mt-4 text-sm text-gray-500">Generating report... This may take a moment</p>
+          </div>
+        ) : message ? (
+          <div className="max-w-4xl mx-auto">
+            {/* Show template selection bar if template is selected */}
+            {selectedTemplate && (
+              <div className="flex items-center justify-between mb-6 bg-white p-3 rounded-lg shadow-sm border">
+                <div className="flex items-center space-x-2">
+                  <LayoutTemplate className="h-4 w-4 text-gray-500" />
+                  <span className="text-sm text-gray-500">Template:</span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="flex items-center space-x-2">
+                        <FileText className="h-4 w-4 text-blue-500" />
+                        <span>{selectedTemplate.templateName}</span>
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-64">
+                      {filteredTemplates.map((template) => (
+                        <DropdownMenuItem
+                          key={template.id}
+                          onClick={() => setSelectedTemplate(template)}
+                          className="cursor-pointer flex items-center space-x-2"
+                        >
+                          <FileText className="h-4 w-4 text-blue-500" />
+                          <span>{template.templateName}</span>
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuItem 
+                        onClick={() => router.push("/create-template")}
+                        className="cursor-pointer flex items-center text-blue-600"
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        <span>Create New Template</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setSelectedTemplate(null);
+                    setSearchTerm("");
+                    setShowTemplates(false);
+                  }}
+                  className="text-red-500 hover:text-red-700 flex items-center space-x-1"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span>Change Template</span>
+                </Button>
+              </div>
+            )}
+            
+            {/* Show the generated content */}
+            <div className={cn("p-6 w-full rounded-lg bg-white border shadow-sm")}>
+              <TextEditor text={message} tag="accident" />
+            </div>
+          </div>
+        ) : !selectedTemplate ? (
+          <div className="max-w-3xl mx-auto rounded-lg p-6">
+            <div className="flex flex-col items-center justify-center space-y-6">
+              <div className="flex items-center space-x-2">
+                <LayoutTemplate className="h-6 w-6 text-blue-500" />
+                <h2 className="text-xl font-semibold text-gray-800">
+                  Select a Template to Begin
+                </h2>
+              </div>
+              
+              <div className="w-full max-w-md">
+                <div className="flex items-center space-x-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      ref={searchInputRef}
+                      placeholder="Search templates..."
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        setShowTemplates(true);
+                      }}
+                      onFocus={() => setShowTemplates(true)}
+                      onBlur={() => setTimeout(() => setShowTemplates(false), 200)}
+                      className="flex-1 pl-9"
+                    />
+                    <ChevronsUpDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  </div>
+                  <Button
+                    onClick={() => router.push("/create_template")}
+                    variant="outline"
+                    className="space-x-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Create New</span>
+                  </Button>
+                </div>
+
+                {showTemplates && (
+                  <div className="mt-4 relative space-y-2 max-h-60 bg-white z-20 overflow-y-auto">
+                    {filteredTemplates.length > 0 ? (
+                      filteredTemplates.map((template) => (
+                        <div
+                          key={template.id}
+                          onClick={() => {
+                            setSelectedTemplate(template);
+                            setShowTemplates(false);
+                          }}
+                          className="p-3 rounded-lg cursor-pointer transition-colors hover:bg-gray-50 border flex justify-between items-center space-x-3"
+                        >
+                          <div className="flex items-start space-x-3">
+                            <FileText className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <h3 className="font-medium text-gray-800">{template.templateName}</h3>
+                              <p className="text-xs text-gray-400">
+                                {template.reportTypes.join(", ")}
+                              </p>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-400">
+                              {new Date(template.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-4">
+                        <FileText className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                        <p className="text-gray-500">No templates found</p>
+                        <Button
+                          onClick={() => router.push("/create_template")}
+                          variant="link"
+                          className="mt-2 text-blue-600"
+                        >
+                          Create your first template
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="max-w-4xl mx-auto">
+            {/* Template Selection Bar */}
+            <div className="flex items-center justify-between mb-6 bg-white p-3 rounded-lg shadow-sm border">
+              <div className="flex items-center space-x-2">
+                <LayoutTemplate className="h-4 w-4 text-gray-500" />
+                <span className="text-sm text-gray-500">Template:</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="flex items-center space-x-2">
+                      <FileText className="h-4 w-4 text-blue-500" />
+                      <span>{selectedTemplate.templateName}</span>
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-64">
+                    {filteredTemplates.map((template) => (
+                      <DropdownMenuItem
+                        key={template.id}
+                        onClick={() => setSelectedTemplate(template)}
+                        className="cursor-pointer flex items-center space-x-2"
+                      >
+                        <FileText className="h-4 w-4 text-blue-500" />
+                        <span>{template.templateName}</span>
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuItem 
+                      onClick={() => router.push("/create-template")}
+                      className="cursor-pointer flex items-center text-blue-600"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      <span>Create New Template</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSelectedTemplate(null);
+                  setSearchTerm("");
+                  setShowTemplates(false);
+                }}
+                className="text-red-500 hover:text-red-700 flex items-center space-x-1"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Change Template</span>
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Input Section with Recording Controls */}
+      <div className="bg-white px-4 py-3 border-t relative">
+        {/* Recording Controls - shown on top of input when recording */}
+        {!message && !isLoading && (
+          <div>
+            {showRecordingControls ? (
+              <div className="absolute bottom-full left-0 right-0 pt-4 border-b rounded-t-lg">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex flex-col items-center">
+            <div className="flex items-center space-x-3 mb-3">
+              <div className="relative">
+                {!isPaused && (
+                  <div className="absolute inset-0 bg-red-100 rounded-full animate-ping opacity-75"></div>
+                )}
+                <Mic className="h-6 w-6 text-red-500 relative" />
+              </div>
+              <span className="text-lg font-medium text-gray-700">
+                {isPaused ? "Recording Paused" : "Recording"}
+              </span>
+            </div>
+            <div className="text-2xl font-mono font-medium text-gray-800 mb-4 text-center">
+              {formatTime(recordingTime)}
+            </div>
+            <div className="flex justify-center space-x-4 mb-4">
+              {isPaused ? (
+                <Button
+                  onClick={resumeRecording}
+                  variant="outline"
+                  className="border-green-500 text-green-500 hover:bg-green-50"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Resume
+                </Button>
+              ) : (
+                <Button
+                  onClick={pauseRecording}
+                  variant="outline"
+                  className="border-amber-500 text-amber-500 hover:bg-amber-50"
+                >
+                  <Pause className="h-4 w-4 mr-2" />
+                  Pause
+                </Button>
+              )}
+              <Button
+                onClick={submitRecording}
+                className="bg-blue-600 hover:bg-blue-700 mb-2"
+              >
+                Submit Recording
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+            ) : (
+              <div className="absolute bottom-40 left-0 right-0 pt-4 rounded-t-lg">
+                <div className="max-w-md mx-auto">
+                  <div className="flex w-full flex-col items-center">
+                    <p className="text-sm mb-1 text-slate-500 font-medium"> <span className="text-blue-500">Click</span> to start recording.</p>
+                    <Button
+                      onClick={startRecording}
+                      variant="outline"
+                      className="border-blue-500 text-lg text-blue-500 w-full py-3 hover:bg-blue-50 mb-4"
+                    >
+                      <Mic className="h-5 w-5 mr-4" />
+                      Start Recording
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+        }
+
+        {/* Regular Input Section */}
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="w-full flex items-center gap-2 border-2 border-[#5E85FE] rounded-lg p-2 md:p-4"
+            className="w-full max-w-4xl mx-auto flex items-center gap-2 border rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition-all"
           >
-            {isListening === false ? (
-              <Mic
-                className="cursor-pointer text-[#3a68f1] text-xl md:text-2xl"
-                onClick={() => {
-                  startListening();
-                  setIsListening(true);
-                }}
-              />
-            ) : (
-              <MicOff
-                className="cursor-pointer text-[#3a68f1] text-xl md:text-2xl animate-ping"
-                onClick={() => {
-                  stopListening();
-                  setIsListening(false);
-                }}
-              />
-            )}
-
             <FormField
               name="prompt"
               render={() => (
-                <FormItem className="w-full">
+                <FormItem className="flex-1">
                   <FormControl className="m-0 p-0">
                     <textarea
-                      className="p-2 border-0 w-full"
+                      className="w-full border-0 focus:ring-0 resize-none min-h-[40px] max-h-[120px] py-2 px-3 text-sm"
                       disabled={isLoading}
-                      placeholder="Record something or type"
+                      placeholder="Describe the accident or record voice notes..."
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
+                      rows={1}
                     />
                   </FormControl>
                 </FormItem>
               )}
             />
+
             <Button
-              className="bg-[#5E85FE] hover:bg-[#0A236D] text-white"
+              className="bg-blue-600 hover:bg-blue-700 text-white rounded-full"
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !prompt.trim()}
               size="icon"
             >
-              <ArrowUp className="text-xl" />
+              <ArrowUp className="h-4 w-4" />
             </Button>
           </form>
         </Form>
+        <div className="max-w-6xl mx-auto mt-2">
+          <div className="flex items-center justify-center space-x-2">
+            <ClipboardList className="h-4 w-4 text-gray-400" />
+            <p className="text-xs text-gray-500 text-center">
+              {showRecordingControls 
+                ? "Speak clearly to record details about the accident" 
+                : "Tip: Include location, time, involved parties, and damages for best results"}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -57,39 +57,40 @@ const Signup = () => {
   }
 
   async function onPressVerify(e: React.FormEvent) {
-    e.preventDefault();
-    if (!isLoaded) return;
-    setVerifying(true);
+  e.preventDefault();
+  if (!isLoaded) return;
+  setVerifying(true);
 
-    try {
-      const completeSignup = await signUp.attemptEmailAddressVerification({ code });
+  try {
+    const completeSignup = await signUp.attemptEmailAddressVerification({ code });
 
-      if (completeSignup.status !== "complete") {
-        console.log("Error: Signup incomplete.");
-        return;
-      }
-
-      if (signUp.status === "complete") {
-        await setActive({ session: completeSignup.createdSessionId });
-
-        await axios.post("/api/signup-success-after-refer", {
-          refId: ref,
-          userId: completeSignup.createdUserId,
-        });
-
-        router.push("/chat");
-      }
-    } catch (error) {
-      console.log(error);
-      toast({
-        title: "Verification Failed",
-        description: "Invalid or expired code. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setVerifying(false);
+    if (completeSignup.status !== "complete") {
+      console.log("Error: Signup incomplete.");
+      return;
     }
+
+    if (signUp.status === "complete") {
+      await setActive({ session: completeSignup.createdSessionId });
+
+      await axios.post("/api/signup-success-after-refer", {
+        refId: ref,
+        userId: completeSignup.createdUserId,
+      });
+
+      // Redirect with tutorial flag
+      router.push("/chat?tutorial=true");
+    }
+  } catch (error) {
+    console.log(error);
+    toast({
+      title: "Verification Failed",
+      description: "Invalid or expired code. Please try again.",
+      variant: "destructive",
+    });
+  } finally {
+    setVerifying(false);
   }
+}
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 px-4 py-8">

@@ -14,7 +14,7 @@ import {
 
 export const sidebarRoutes = [
   {
-    label: "New AI Chat",
+    label: "New Report",
     icon: MessageCirclePlus,
     href: "/chat",
     color: "text-sky-500",

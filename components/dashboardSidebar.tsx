@@ -2,37 +2,58 @@
 
 import { sidebarRoutes } from "@/constants/dashboard";
 import { cn } from "@/lib/utils";
-
 import { Montserrat } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import FreeCounter from "./free-counter";
-// import FreeCounter from "./free-counter";
+import { useAuth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 
 const monserrat = Montserrat({ weight: "600", subsets: ["latin"] });
 
 interface SideBarProps {
   apiLimitCount: number;
   isPro: boolean;
+  userId?: string;
 }
 
-const Sidebar = ({ apiLimitCount = 0, isPro = false }: SideBarProps) => {
+const Sidebar = ({ apiLimitCount = 0, isPro = false, userId }: SideBarProps) => {
   const pathname = usePathname();
   const router = useRouter();
+  const { isSignedIn } = useAuth();
+
+  const handleShowTutorialAgain = async () => {
+    if (!userId) return;
+    
+    try {
+      await fetch('/api/update-user-metadata', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          metadata: { hasSeenTutorial: false }
+        })
+      });
+      router.push('/chat?tutorial=true');
+    } catch (error) {
+      console.error("Failed to reset tutorial state:", error);
+    }
+  };
+
   return (
     <div className="space-y-4 py-3 flex flex-col h-full bg-[#161717] text-white drop-shadow-xl">
       <div className="px-2 py-2">
-        <Link
-          href="/chat"
-          className="flex justify-center mb-2 text-xl font-bold"
-        >
-        <Image src={'/mainlogo.png'} width={180} height={150} alt="mainlogo" />
+        <Link href="/chat" className="flex justify-center mb-2 text-xl font-bold">
+          <Image src={"/mainlogo.png"} width={180} height={150} alt="mainlogo" />
         </Link>
 
         {sidebarRoutes.map((route) => (
           <Link
             key={route.href}
+            id={`sidebar-${route.label.replace(/\s+/g, "-").toLowerCase()}`}
             href={route.href}
             className={cn(
               "text-sm group flex p-3 my-1 w-full justify-start font-medium cursor-pointer hover:text-white hover:bg-white/10 hover:drop-shadow-xl hover:rounded-lg transition",
@@ -60,8 +81,10 @@ const Sidebar = ({ apiLimitCount = 0, isPro = false }: SideBarProps) => {
           </Link>
         ))}
       </div>
+      
       <FreeCounter isPro={isPro} apiLimitCount={apiLimitCount} />
     </div>
   );
 };
+
 export default Sidebar;

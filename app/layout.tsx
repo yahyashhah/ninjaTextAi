@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster";
 import SessionAutoLogout from "@/components/SessionAutoLogout";
 import CheckLogoutOnReturn from "@/components/CheckLogoutOnReturn";
 import { ClientRootLayout } from "./ClientRootLayout";
+import SidebarTutorial from "@/components/SidebarTutorial";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -28,6 +29,7 @@ export default function RootLayout({
           <ModalProvider />
           <SessionAutoLogout />
           <CheckLogoutOnReturn />
+          <SidebarTutorial />
           <ClientRootLayout>{children}</ClientRootLayout>
           <Toaster/>
         </body>

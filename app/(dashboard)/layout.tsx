@@ -6,11 +6,14 @@ import { checkOrgSubscription } from "@/lib/organization-billing";
 import { checkSubscription } from "@/lib/subscription";
 import { cn } from "@/lib/utils";
 import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
 
 // app/(dashboard)/layout.tsx
 const DashboardLayout = async ({ children }: { children: React.ReactNode }) => {
   const { userId, orgId } = auth();
+
+  if (!userId) redirect("/sign-in");
 
   const apiLimitCount = (await getApiLimit()) as number;
 
@@ -21,7 +24,7 @@ const DashboardLayout = async ({ children }: { children: React.ReactNode }) => {
   return (
     <div className={cn("h-full relative bg-white")}>
       <div className="hidden h-full md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 rounded-br-lg rounded-tr-lg">
-        <Sidebar isPro={isPro} apiLimitCount={apiLimitCount} />
+        <Sidebar userId={userId} isPro={isPro} apiLimitCount={apiLimitCount} />
       </div>
       <main className={cn("md:pl-64")}>
         <Navbar />

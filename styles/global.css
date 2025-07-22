@@ -1,0 +1,41 @@
+.introjs-tooltip.custom-tooltip {
+  min-width: 300px;
+  max-width: 400px;
+  border-radius: 8px;
+  background: #2D3748;
+  color: white;
+}
+
+.introjs-tooltip-header {
+  color: white;
+}
+
+.introjs-tooltiptext h3 {
+  color: #5E85FE;
+  margin-bottom: 8px;
+}
+
+.introjs-tooltiptext p {
+  color: #E2E8F0;
+}
+
+.custom-highlight {
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7);
+}
+
+.introjs-button {
+  background: #5E85FE !important;
+  color: white !important;
+  border-radius: 4px !important;
+  text-shadow: none !important;
+}
+
+.introjs-button.introjs-skipbutton {
+  background: transparent !important;
+  color: #A0AEC0 !important;
+}
+
+.introjs-progress {
+  background: #5E85FE !important;
+}
