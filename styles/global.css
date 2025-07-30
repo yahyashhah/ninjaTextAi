@@ -1,41 +1,104 @@
-.introjs-tooltip.custom-tooltip {
-  min-width: 300px;
-  max-width: 400px;
-  border-radius: 8px;
-  background: #2D3748;
-  color: white;
+/* Intro.js Custom Styles */
+.introjs-overlay {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+  z-index: 2147483646 !important;
 }
 
-.introjs-tooltip-header {
-  color: white;
+.introjs-helperLayer {
+  z-index: 2147483645 !important;
+  box-shadow: 
+    rgba(33, 33, 33, 0.8) 0px 0px 1px 2px, 
+    rgba(33, 33, 33, 0.8) 0px 0px 0px 5000px !important;
+  border-radius: 8px !important;
 }
 
-.introjs-tooltiptext h3 {
-  color: #5E85FE;
-  margin-bottom: 8px;
-}
-
-.introjs-tooltiptext p {
-  color: #E2E8F0;
-}
-
-.custom-highlight {
-  border-radius: 8px;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7);
-}
-
-.introjs-button {
-  background: #5E85FE !important;
+.introjs-tooltip {
+  z-index: 2147483647 !important;
+  position: fixed !important;
+  background-color: #2D3748 !important;
   color: white !important;
-  border-radius: 4px !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+  border: 1px solid #374151 !important;
+  max-width: 400px !important;
+}
+
+.introjs-tooltipReferenceLayer {
+  z-index: 2147483644 !important;
+}
+
+/* Mobile specific styles */
+@media (max-width: 768px) {
+  .introjs-tooltip {
+    left: 20px !important;
+    right: 20px !important;
+    bottom: 20px !important;
+    max-width: calc(100% - 40px) !important;
+    max-height: 50vh !important;
+    overflow-y: auto !important;
+  }
+  
+  .introjs-helperLayer {
+    border-radius: 8px !important;
+  }
+}
+
+/* Tooltip content */
+.introjs-tooltip-title {
+  color: white !important;
+  font-size: 1.25rem !important;
+  font-weight: 600 !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.introjs-tooltiptext {
+  color: #E5E7EB !important;
+  font-size: 0.95rem !important;
+  line-height: 1.5 !important;
+}
+
+/* Buttons */
+.introjs-button {
+  background-color: #5E85FE !important;
+  color: white !important;
+  border-radius: 0.5rem !important;
+  padding: 0.5rem 1rem !important;
+  margin: 0.25rem !important;
   text-shadow: none !important;
+  border: none !important;
+  transition: all 0.2s ease !important;
 }
 
-.introjs-button.introjs-skipbutton {
-  background: transparent !important;
-  color: #A0AEC0 !important;
+.introjs-button:hover {
+  background-color: #4a6dc7 !important;
 }
 
+.introjs-prevbutton {
+  background-color: transparent !important;
+  border: 1px solid #5E85FE !important;
+  color: #5E85FE !important;
+}
+
+.introjs-skipbutton {
+  background-color: transparent !important;
+  color: #9CA3AF !important;
+}
+
+/* Progress bar */
 .introjs-progress {
+  background-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.introjs-progressbar {
+  background-color: #5E85FE !important;
+  height: 3px !important;
+}
+
+/* Step counter */
+.introjs-bullets ul li a {
+  background: rgba(255, 255, 255, 0.4) !important;
+}
+
+.introjs-bullets ul li a.active {
   background: #5E85FE !important;
 }

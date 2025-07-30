@@ -7,6 +7,7 @@ import MobileSidebar from "./mobile-sidebar";
 import ShowTutorialAgain from "./showTutorialAgain";
 import { auth } from "@clerk/nextjs/server";
 import { getServerOrgId } from "@/lib/get-org-id";
+import { redirect } from "next/navigation";
 
 const Navbar = async () => {
   const apiLimitCount = (await getApiLimit()) as number;
@@ -16,10 +17,12 @@ const Navbar = async () => {
   const { userId } = auth();
   const orgId = await getServerOrgId();
 
+  if (!userId) redirect("/sign-in");
+
   return (
     <div className="flex bg-[#161717] items-center justify-between p-4 md:p-6"> {/* Adjusted padding */}
       <div className="flex items-center gap-2 md:gap-4"> {/* Adjusted gap */}
-        <MobileSidebar isPro={isPro} apiLimitCount={apiLimitCount} />
+        <MobileSidebar isPro={isPro} apiLimitCount={apiLimitCount} userId={userId} />
         
         <SignedIn>
           {orgId && (
@@ -36,8 +39,9 @@ const Navbar = async () => {
         </SignedIn>
       </div>
 
-      <div className="flex items-center gap-2 md:gap-4"> {/* Adjusted gap */}
-        <ShowTutorialAgain userId={userId} />
+      <div className="hidden md:flex items-center gap-2 md:gap-4"> {/* Adjusted gap */}
+        <ShowTutorialAgain 
+          userId={userId ?? undefined} />
         <SignedIn>
           <UserButton afterSignOutUrl="/" />
         </SignedIn>

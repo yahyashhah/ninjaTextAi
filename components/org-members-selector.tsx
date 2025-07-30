@@ -70,48 +70,48 @@ export const OrgMembersSelector = () => {
     }
   };
 
-const syncMembers = async () => {
-  if (!organization?.id) return;
+  const syncMembers = async () => {
+    if (!organization?.id) return;
 
-  try {
-    setSyncing(true);
-    const res = await fetch("/api/organization/sync-members", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orgId: organization.id }),
-    });
+    try {
+      setSyncing(true);
+      const res = await fetch("/api/organization/sync-members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId: organization.id }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!res.ok) {
-      throw new Error(data.error || "Failed to sync members");
-    }
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to sync members");
+      }
 
-    toast({
-      title: "Sync completed",
-      description: `Successfully processed ${data.stats.success} members. ${
-        data.stats.skipped ? `${data.stats.skipped} skipped. ` : ''
-      }${
-        data.stats.errors ? `${data.stats.errors} errors.` : ''
-      }`,
-      ...(data.stats.errors > 0 && {
+      toast({
+        title: "Sync completed",
+        description: `Successfully processed ${data.stats.success} members. ${
+          data.stats.skipped ? `${data.stats.skipped} skipped. ` : ''
+        }${
+          data.stats.errors ? `${data.stats.errors} errors.` : ''
+        }`,
+        ...(data.stats.errors > 0 && {
+          variant: "destructive",
+          description: `Errors: ${data.errorMessages?.join(", ")}`,
+        }),
+      });
+
+      await fetchMembers(); // Refresh the list
+    } catch (error) {
+      console.error("Error syncing members:", error);
+      toast({
         variant: "destructive",
-        description: `Errors: ${data.errorMessages?.join(", ")}`,
-      }),
-    });
-
-    await fetchMembers(); // Refresh the list
-  } catch (error) {
-    console.error("Error syncing members:", error);
-    toast({
-      variant: "destructive",
-      title: "Sync failed",
-      description: error instanceof Error ? error.message : "Failed to sync members",
-    });
-  } finally {
-    setSyncing(false);
-  }
-};
+        title: "Sync failed",
+        description: error instanceof Error ? error.message : "Failed to sync members",
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleSelectionChange = (userId: string, checked: boolean) => {
     setSelectedMembers((prev) => 
@@ -158,11 +158,11 @@ const syncMembers = async () => {
   }
 
   return (
-    <div className="border rounded-lg p-6">
-      <div className="flex justify-between items-start">
+    <div className="border rounded-lg p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h3 className="text-lg font-medium">Assign Pro Access</h3>
-          <p className="text-sm text-muted-foreground mt-2">
+          <p className="text-sm text-muted-foreground mt-1 sm:mt-2">
             Select members to grant pro access (up to your available seats)
           </p>
         </div>
@@ -171,6 +171,7 @@ const syncMembers = async () => {
           disabled={syncing || saving}
           variant="outline"
           size="sm"
+          className="w-full sm:w-auto"
         >
           {syncing ? (
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -196,89 +197,112 @@ const syncMembers = async () => {
           </div>
         ) : (
           members.map((member) => (
-  <div 
-    key={member.id} 
-    className="flex items-center gap-4 p-3 border rounded hover:bg-muted/50"
-  >
-    <Checkbox
-      checked={selectedMembers.includes(member.userId)}
-      onCheckedChange={(checked: boolean | "indeterminate") =>
-        handleSelectionChange(member.userId, checked === true)
-      }
-      disabled={
-        member.user?.isPro &&
-        member.user?.proAccessGrantedBy !== organization?.id
-      }
-    />
-    
-    {/* Profile Image */}
-    {member.user?.profileImageUrl ? (
-      <img 
-        src={member.user.profileImageUrl} 
-        alt="Profile"
-        className="h-10 w-10 rounded-full"
-      />
-    ) : (
-      <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
-        <span className="text-xs">
-          {member.user?.firstName?.[0]}{member.user?.lastName?.[0]}
-        </span>
-      </div>
-    )}
-    
-    <div className="flex-1">
-      {/* Name */}
-      <p className="font-medium">
-        {member.user?.firstName || member.user?.lastName 
-          ? `${member.user.firstName || ''} ${member.user.lastName || ''}`.trim()
-          : 'Unnamed User'}
-      </p>
-      
-      {/* Email */}
-      {member.user?.email && (
-        <p className="text-xs text-muted-foreground">
-          {member.user.email}
-        </p>
-      )}
-      
-      {/* Clerk User ID */}
-      {member.user?.clerkUserId && (
-        <p className="text-xs text-muted-foreground">
-          ID: {member.user.clerkUserId}
-        </p>
-      )}
-    </div>
-    
-    <div className="flex flex-col items-end">
-      <span className="text-sm font-medium">
-        {member.role === "org:admin" ? "Admin" : "Member"}
-      </span>
-      <span className="text-xs text-muted-foreground">
-        {member.user?.isPro ? (
-          member.user?.proAccessGrantedBy === organization?.id ? (
-            <span className="text-green-600">Pro (from this org)</span>
-          ) : (
-            <span className="text-amber-600">Pro (external)</span>
-          )
-        ) : (
-          <span className="text-muted-foreground">Basic</span>
+            <div 
+              key={member.id} 
+              className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 border rounded hover:bg-muted/50"
+            >
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <Checkbox
+                  checked={selectedMembers.includes(member.userId)}
+                  onCheckedChange={(checked: boolean | "indeterminate") =>
+                    handleSelectionChange(member.userId, checked === true)
+                  }
+                  disabled={
+                    member.user?.isPro &&
+                    member.user?.proAccessGrantedBy !== organization?.id
+                  }
+                />
+                
+                {/* Profile Image */}
+                {member.user?.profileImageUrl ? (
+                  <img 
+                    src={member.user.profileImageUrl} 
+                    alt="Profile"
+                    className="h-10 w-10 rounded-full"
+                  />
+                ) : (
+                  <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
+                    <span className="text-xs">
+                      {member.user?.firstName?.[0]}{member.user?.lastName?.[0]}
+                    </span>
+                  </div>
+                )}
+                
+                <div className="flex-1 sm:hidden">
+                  {/* Name */}
+                  <p className="font-medium">
+                    {member.user?.firstName || member.user?.lastName 
+                      ? `${member.user.firstName || ''} ${member.user.lastName || ''}`.trim()
+                      : 'Unnamed User'}
+                  </p>
+                  
+                  {/* Email */}
+                  {member.user?.email && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      {member.user.email}
+                    </p>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex-1 min-w-0 pl-11 sm:pl-0">
+                {/* Desktop: Name and Email in one column */}
+                <div className="hidden sm:block">
+                  <p className="font-medium truncate">
+                    {member.user?.firstName || member.user?.lastName 
+                      ? `${member.user.firstName || ''} ${member.user.lastName || ''}`.trim()
+                      : 'Unnamed User'}
+                  </p>
+                  
+                  {member.user?.email && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      {member.user.email}
+                    </p>
+                  )}
+                  
+                  {/* Clerk User ID */}
+                  {member.user?.clerkUserId && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      ID: {member.user.clerkUserId}
+                    </p>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 w-full sm:w-auto pl-11 sm:pl-0">
+                <div className="flex flex-col sm:items-end">
+                  <span className="text-sm font-medium">
+                    {member.role === "org:admin" ? "Admin" : "Member"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {member.user?.isPro ? (
+                      member.user?.proAccessGrantedBy === organization?.id ? (
+                        <span className="text-green-600">Pro (from this org)</span>
+                      ) : (
+                        <span className="text-amber-600">Pro (external)</span>
+                      )
+                    ) : (
+                      <span className="text-muted-foreground">Basic</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))
         )}
-      </span>
-    </div>
-  </div>
-  )))}
       </div>
 
       {members.length > 0 && (
-        <div className="flex justify-between items-center mt-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mt-6">
           <div className="text-sm">
             Selected: {selectedMembers.length} members
           </div>
-          <div className="space-x-2">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Button 
               onClick={syncMembers} 
               disabled={syncing || saving}
               variant="outline"
+              className="w-full sm:w-auto"
             >
               {syncing ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -290,6 +314,7 @@ const syncMembers = async () => {
             <Button 
               onClick={saveSeatAssignments} 
               disabled={saving || loading || syncing}
+              className="w-full sm:w-auto"
             >
               {saving ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />

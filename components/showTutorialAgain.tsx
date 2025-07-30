@@ -1,10 +1,15 @@
-"use client"
-import React from 'react'
+"use client";
+import React from 'react';
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { GraduationCap, BookOpen } from "lucide-react"; 
+import { GraduationCap } from "lucide-react"; 
 
-const ShowTutorialAgain = ({ userId }) => {
+interface ShowTutorialAgainProps {
+  userId?: string;
+  setSidebarOpen?: (open: boolean) => void;
+}
+
+const ShowTutorialAgain = ({ userId, setSidebarOpen }: ShowTutorialAgainProps) => {
   const router = useRouter();
   const { isSignedIn } = useAuth();
   
@@ -12,7 +17,7 @@ const ShowTutorialAgain = ({ userId }) => {
     if (!userId) return;
     
     try {
-      fetch('/api/update-user-metadata', {
+      await fetch('/api/update-user-metadata', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -21,7 +26,12 @@ const ShowTutorialAgain = ({ userId }) => {
           userId,
           metadata: { hasSeenTutorial: false }
         })
-      }).catch(error => console.error("Failed to reset tutorial state:", error));
+      });
+      setSidebarOpen?.(false); // Close sidebar if open
+      // Open sidebar if it's not already open (for mobile)
+      // if (onSidebarOpen) {
+      //   onSidebarOpen();
+      // }
       
       router.push('/chat?tutorial=true&force=true');
     } catch (error) {
@@ -29,31 +39,31 @@ const ShowTutorialAgain = ({ userId }) => {
     }
   };
 
-   return (
+  return (
     <div>
       {isSignedIn && (
         <>
           {/* Desktop version */}
           <button
             onClick={handleShowTutorialAgain}
-            className="hidden md:flex items-center gap-2 px-4 py-2 text-sm bg-[#5E85FE] hover:bg-[#4a6dc7] text-white rounded-lg transition-colors"
+            className="hidden md:flex items-center gap-2 px-4 py-2 text-sm bg-[#5E85FE] hover:bg-[#4a6dc7] text-white rounded-lg transition-colors w-full justify-center"
           >
-            <GraduationCap className="h-4 w-4" /> {/* Changed icon */}
+            <GraduationCap className="h-4 w-4" />
             Show Tutorial Again
           </button>
           
           {/* Mobile version */}
           <button
             onClick={handleShowTutorialAgain}
-            className="md:hidden p-2 bg-[#5E85FE] hover:bg-[#4a6dc7] text-white rounded-lg transition-colors"
-            aria-label="Show tutorial again"
+            className="md:hidden flex items-center justify-center gap-2 px-4 py-2 text-sm bg-[#5E85FE] hover:bg-[#4a6dc7] text-white rounded-lg transition-colors w-full"
           >
-            <GraduationCap className="h-5 w-5" /> {/* Matching icon */}
+            <GraduationCap className="h-4 w-4" />
+            <span>Show Tutorial</span>
           </button>
         </>
       )}
     </div>
-  )
-}
+  );
+};
 
 export default ShowTutorialAgain;

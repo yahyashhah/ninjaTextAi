@@ -8,7 +8,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import FreeCounter from "./free-counter";
 import { useAuth } from "@clerk/nextjs";
-import { auth } from "@clerk/nextjs/server";
+import ShowTutorialAgain from "./showTutorialAgain";
 
 const monserrat = Montserrat({ weight: "600", subsets: ["latin"] });
 
@@ -16,32 +16,12 @@ interface SideBarProps {
   apiLimitCount: number;
   isPro: boolean;
   userId?: string;
+  setSidebarOpen?: (open: boolean) => void;
 }
 
-const Sidebar = ({ apiLimitCount = 0, isPro = false, userId }: SideBarProps) => {
+const Sidebar = ({ apiLimitCount = 0, isPro = false, userId, setSidebarOpen }: SideBarProps) => {
   const pathname = usePathname();
-  const router = useRouter();
   const { isSignedIn } = useAuth();
-
-  const handleShowTutorialAgain = async () => {
-    if (!userId) return;
-    
-    try {
-      await fetch('/api/update-user-metadata', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId,
-          metadata: { hasSeenTutorial: false }
-        })
-      });
-      router.push('/chat?tutorial=true');
-    } catch (error) {
-      console.error("Failed to reset tutorial state:", error);
-    }
-  };
 
   return (
     <div className="space-y-4 py-3 flex flex-col h-full bg-[#161717] text-white drop-shadow-xl">
@@ -80,6 +60,10 @@ const Sidebar = ({ apiLimitCount = 0, isPro = false, userId }: SideBarProps) => 
             </div>
           </Link>
         ))}
+      </div>
+      
+      <div className="px-3 flex md:hidden">
+        <ShowTutorialAgain userId={userId} setSidebarOpen={setSidebarOpen} />
       </div>
       
       <FreeCounter isPro={isPro} apiLimitCount={apiLimitCount} />

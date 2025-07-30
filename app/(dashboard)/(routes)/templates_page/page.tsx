@@ -60,7 +60,7 @@ const Page = () => {
     <div className="flex flex-col h-[calc(100vh-74px)] bg-gray-100 overflow-hidden">
   <div className="w-full flex justify-end items-center p-4 px-6 bg-white border-b border-slate-300 shadow-md rounded-b-lg">
     <Link href="/create_template" passHref>
-      <Button className="bg-blue-600">
+      <Button id="template-card" className="bg-blue-600">
         Create Template
       </Button>
     </Link>

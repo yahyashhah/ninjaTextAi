@@ -23,7 +23,7 @@ const Heading = ({
           <Icon className={cn("w-10 h-10", iconColor)} />
         </div>
         <div>
-          <h2 className="text-3xl font-bold">{title}</h2>
+          <h2 id="profile-section" className="text-3xl font-bold">{title}</h2>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
       </div>

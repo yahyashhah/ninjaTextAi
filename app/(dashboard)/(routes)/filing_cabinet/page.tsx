@@ -103,7 +103,7 @@ const FilingCabinet = () => {
   return (
     <div className="min-h-screen bg-white p-4 md:p-8">
       <div className="flex flex-col items-start mb-8 px-2 md:px-8 gap-2">
-        <h1 className="my-2 bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent text-xl md:text-3xl font-bold text-center mt-6">
+        <h1 id="file-list" className="my-2 bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent text-xl md:text-3xl font-bold text-center mt-6">
           Filing Cabinet
         </h1>
         <p className="text-muted-foreground font-normal text-sm text-center">

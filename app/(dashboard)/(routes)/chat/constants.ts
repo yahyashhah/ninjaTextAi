@@ -22,8 +22,8 @@ export const dashboardConstants = [
     color: "text-violet-500",
     bgColor: "bg-[#EDD3FF]",
     tip: `Detailed accounts of specific incidents, including the sequence of events, actions taken, and statements from involved parties.`,
+    subtext: "Log general non-criminal events or public disturbances",
   },
-
   {
     label: "Arrest Report",
     icon: BookLock,
@@ -31,6 +31,7 @@ export const dashboardConstants = [
     color: "text-[#1BC18F]",
     bgColor: "bg-[#E2F7FA]",
     tip: "Descriptions of the circumstances leading to an arrest, including the suspect's behavior, evidence collected, and any use of force.",
+    subtext: "Detail arrest circumstances, charges, and custody status",
   },
   {
     label: "Accident Report",
@@ -39,6 +40,7 @@ export const dashboardConstants = [
     color: "text-[#E88686]",
     bgColor: "bg-[#FEE5E1]",
     tip: "Narratives detailing the events leading up to, during, and after a vehicular accident, including witness statements and officer observations.",
+    subtext: "Document vehicle collisions and roadway incidents",
   },
   {
     label: "Witness Statements",
@@ -47,6 +49,7 @@ export const dashboardConstants = [
     color: "text-[#4260D3]",
     bgColor: "bg-[#E2E8FF]",
     tip: "Recorded narratives of what witnesses observed, which can be included as part of larger reports.",
+    subtext: "Record verbatim or summarized accounts from witnesses",
   },
   {
     label: "Use of Force Report",
@@ -55,14 +58,16 @@ export const dashboardConstants = [
     color: "text-[#E88686]",
     bgColor: "bg-[#FEE5E1]",
     tip: "Detailed accounts of situations where officers used force, including the justification and the outcome.",
+    subtext: "Report any physical force used during an encounter",
   },
   {
-    label: "Domestic Voilence's Report",
+    label: "Domestic Violence Report",  // Fixed typo from "Domestic Voilence's Report"
     icon: House,
-    href: "/domestic_voilence",
+    href: "/domestic_voilence",  // Also fixed the href to match
     color: "text-[#4260D3]",
     bgColor: "bg-[#E2E8FF]",
     tip: "Summary of domestic violence incidents, detailing relationships, abuse evidence, and protective measures.",
+    subtext: "Detail incidents involving domestic abuse or disputes",
   },
   {
     label: "Field Interview Reports",
@@ -71,6 +76,7 @@ export const dashboardConstants = [
     color: "text-[#8F42C5]",
     bgColor: "bg-[#EDD3FF]",
     tip: "Narratives based on interactions with individuals during patrols, including the reasons for the interview and any relevant observations.",
+    subtext: "Record non-custodial interactions with individuals",
   },
   {
     label: "Supplemental Reports",
@@ -79,5 +85,6 @@ export const dashboardConstants = [
     color: "text-[#1BC18F]",
     bgColor: "bg-[#E2F7FA]",
     tip: "Additional narratives added to original reports to provide more information or updates as an investigation progresses.",
+    subtext: "Add updates or corrections to a previous report",
   },
 ];

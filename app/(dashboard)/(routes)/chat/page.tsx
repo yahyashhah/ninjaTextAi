@@ -47,7 +47,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <h1 className="bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent text-2xl sm:text-4xl md:text-5xl font-bold text-center mt-16">
+        <h1 id="new-report-button" className="bg-gradient-to-t from-[#0A236D] to-[#5E85FE] bg-clip-text text-transparent text-2xl sm:text-4xl md:text-5xl font-bold text-center mt-16">
           NinjaText-AI
         </h1>
         <p className="text-gray-600 font-normal text-base md:text-lg text-center">
@@ -85,7 +85,7 @@ const Dashboard = () => {
                       <div>
                         <h3 className="font-semibold text-gray-800 text-base">{tool.label}</h3>
                         <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                          "Create professional police reports"
+                          {tool.subtext || "Create professional police reports"}
                         </p>
                       </div>
                     </div>

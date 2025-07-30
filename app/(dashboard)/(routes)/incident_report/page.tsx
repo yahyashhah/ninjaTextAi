@@ -71,6 +71,7 @@ const IncidentReport = () => {
   const [isLoading, setIsLoading] = useState(false);
   const timerRef = useRef<NodeJS.Timeout>();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -240,8 +241,16 @@ const IncidentReport = () => {
     }
   };
 
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [prompt]);
+
   return (
-    <div className="flex flex-col h-[calc(100vh-87px)] bg-gray-50">
+    <div className="flex flex-col h-[calc(100vh-80px)] bg-gray-50">
       {/* Header Section */}
       <div className="w-full flex justify-between items-center p-4 px-6 bg-white shadow-sm border-b">
         <div className="flex items-center space-x-4">
@@ -265,7 +274,10 @@ const IncidentReport = () => {
         {isLoading ? (
           <div className="max-w-4xl mx-auto h-64 flex flex-col items-center justify-center rounded-lg">
             <Loader />
-            <p className="mt-4 text-sm text-gray-500">Generating report... This may take a moment</p>
+            <p className="mt-4 text-sm text-gray-500 text-center max-w-md">
+              Generating Your Report...<br />
+              This may take a few seconds. Please don't close the tab.
+            </p>
           </div>
         ) : message ? (
           <div className="max-w-4xl mx-auto">
@@ -330,7 +342,7 @@ const IncidentReport = () => {
               <div className="flex items-center space-x-2">
                 <LayoutTemplate className="h-6 w-6 text-blue-500" />
                 <h2 className="text-xl font-semibold text-gray-800">
-                  Select a Template to Begin
+                  Choose a Template to Start Your Report
                 </h2>
               </div>
               
@@ -467,7 +479,7 @@ const IncidentReport = () => {
         {!message && !isLoading && (
           <div>
             {showRecordingControls ? (
-              <div className="absolute bottom-full left-0 right-0 pt-4 border-b rounded-t-lg">
+              <div className="absolute bottom-full lg:bottom-40 xl:bottom-44 2xl:bottom-60 left-0 right-0 pt-4 rounded-t-lg">
                 <div className="max-w-4xl mx-auto">
                   <div className="flex flex-col items-center">
                     <div className="flex items-center space-x-3 mb-3">
@@ -515,10 +527,27 @@ const IncidentReport = () => {
                 </div>
               </div>
             ) : (
-              <div className="absolute bottom-40 left-0 right-0 pt-4 rounded-t-lg">
-                <div className="max-w-md mx-auto">
+              <div className={cn(
+                "absolute",
+                "bottom-40", // Default position
+                "md:bottom-44", // Slightly higher on medium screens
+                "lg:bottom-48", // Higher on large screens
+                "xl:bottom-56", // Even higher on extra large screens
+                "2xl:bottom-60", // Highest on 2xl screens
+                "left-0 right-0 pt-4 rounded-t-lg"
+              )}>
+                <div className={cn(
+                  "mx-auto",
+                  "w-full max-w-md", // Default size
+                  "lg:max-w-lg",     // Larger on lg screens
+                  "xl:max-w-xl",     // Even larger on xl screens
+                  "2xl:max-w-2xl",    // Largest size
+                  "px-2"
+                )}>
                   <div className="flex w-full flex-col items-center">
-                    <p className="text-sm mb-1 text-slate-500 font-medium"> <span className="text-blue-500">Click</span> to start recording.</p>
+                    <p className="text-sm mb-1 text-slate-500 font-medium">
+                      <span className="text-blue-500">Ready to speak?</span> Tap 'Start Recording'
+                    </p>
                     <Button
                       onClick={startRecording}
                       variant="outline"
@@ -546,12 +575,19 @@ const IncidentReport = () => {
                 <FormItem className="flex-1">
                   <FormControl className="m-0 p-0">
                     <textarea
-                      className="w-full border-0 focus:ring-0 resize-none min-h-[40px] max-h-[120px] py-2 px-3 text-sm"
+                      ref={textareaRef}
+                      className="w-full border-0 focus:ring-0 resize-y min-h-[80px] max-h-[200px] py-2 px-3 text-base transition-all duration-200 ease-in-out"
                       disabled={isLoading}
-                      placeholder="Describe the incident or record voice notes..."
+                      placeholder="You can type here or use the mic to dictate"
                       value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      rows={1}
+                      onChange={(e) => {
+                        setPrompt(e.target.value);
+                        // Auto-expand the textarea
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${e.target.scrollHeight}px`;
+                      }}
+                      rows={3}
+                      style={{minHeight: '80px', maxHeight: '300px'}}
                     />
                   </FormControl>
                 </FormItem>
@@ -571,7 +607,7 @@ const IncidentReport = () => {
         <div className="max-w-6xl mx-auto mt-2">
           <div className="flex items-center justify-center space-x-2">
             <ClipboardList className="h-4 w-4 text-gray-400" />
-            <p className="text-xs text-gray-500 text-center">
+            <p className="text-xs xl:text-base text-gray-500 text-center">
               {showRecordingControls 
                 ? "Speak clearly to record details about the incident" 
                 : "Tip: Include location, time, involved parties, and description for best results"}

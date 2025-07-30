@@ -94,7 +94,7 @@ const SettingsPage = async () => {
       <ProWelcomeModal />
       <div className="max-w-2xl mx-auto bg-white shadow-xl rounded-2xl p-8 border border-gray-200">
         <div className="text-center mb-6">
-          <h1 className="text-3xl font-extrabold bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
+          <h1 id="plan-selection" className="text-3xl font-extrabold bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
             NinjaTextAI Pro ✨
           </h1>
           <p className="text-muted-foreground text-sm mt-2">

@@ -76,7 +76,7 @@ const FilingCabinet = () => {
       <div className="w-full mx-auto space-y-5">
         {/* Heading */}
         <div>
-          <h1 className="text-2xl lg:text-3xl font-semibold">Referral and credits</h1>
+          <h1 id="referral-input" className="text-2xl lg:text-3xl font-semibold">Referral and credits</h1>
         </div>
 
         {/* Credit Balance */}
