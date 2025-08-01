@@ -343,14 +343,14 @@ const AccidentReport = () => {
             <div className="flex flex-col items-center justify-center space-y-6">
               <div className="flex items-center space-x-2">
                 <LayoutTemplate className="h-6 w-6 text-blue-500" />
-                <h2 className="text-xl font-semibold text-gray-800">
+                                <h2 className="text-[15px] md:text-xl font-semibold text-gray-800">
                   Choose a Template to Start Your Report
                 </h2>
               </div>
               
               <div className="w-full max-w-md">
-                <div className="flex items-center space-x-2">
-                  <div className="relative flex-1">
+                <div className="flex items-center flex-col md:flex-row space-y-2 space-x-2">
+                  <div className="relative flex-1 w-full">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
                       ref={searchInputRef}
@@ -369,7 +369,7 @@ const AccidentReport = () => {
                   <Button
                     onClick={() => router.push("/create_template")}
                     variant="outline"
-                    className="space-x-2"
+                    className="space-x-2 w-full"
                   >
                     <Plus className="h-4 w-4" />
                     <span>Create New</span>
@@ -425,10 +425,10 @@ const AccidentReport = () => {
         ) : (
           <div className="max-w-4xl mx-auto">
             {/* Template Selection Bar */}
-            <div className="flex items-center justify-between mb-6 bg-white p-3 rounded-lg shadow-sm border">
+            <div className="flex items-center text-xs md:text-base justify-between mb-6 bg-white p-3 rounded-lg shadow-sm border">
               <div className="flex items-center space-x-2">
                 <LayoutTemplate className="h-4 w-4 text-gray-500" />
-                <span className="text-sm text-gray-500">Template:</span>
+                <span className="text-xs md:text-sm text-gray-500">Template:</span>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="flex items-center space-x-2">
@@ -468,7 +468,7 @@ const AccidentReport = () => {
                 className="text-red-500 hover:text-red-700 flex items-center space-x-1"
               >
                 <ArrowLeft className="h-4 w-4" />
-                <span>Change Template</span>
+                <span>Change <span className="hidden md:inline">Template</span></span>
               </Button>
             </div>
           </div>
