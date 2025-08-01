@@ -11,6 +11,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 export default function SidebarTutorial() {
   const [stepsEnabled, setStepsEnabled] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const [isNavigating, setIsNavigating] = useState(false);
   const [elementsReady, setElementsReady] = useState(false);
   const introRef = useRef<any>(null);
   const { isLoaded, isSignedIn, userId } = useAuth();
@@ -20,7 +21,6 @@ export default function SidebarTutorial() {
   const pathname = usePathname();
   const showTutorial = searchParams.get("tutorial") === "true";
   const isMobile = useMediaQuery("(max-width: 768px)");
-  const [isInitialized, setIsInitialized] = useState(false);
 
   // Define page-specific elements to highlight for mobile
   const pageElements: Record<string, string> = {
@@ -37,7 +37,7 @@ export default function SidebarTutorial() {
   const mobileSteps = sidebarRoutes.map((route, index) => ({
     element: pageElements[route.href] || 'body',
     intro: mobileTooltipContent(route.label, route.href, index + 1, sidebarRoutes.length),
-    position: index === sidebarRoutes.length - 1 ? 'top' : 'bottom',
+    position: index === sidebarRoutes.length - 1 ? 'top' : 'bottom', // Last step at top
     tooltipClass: 'mobile-tooltip',
     highlightClass: 'mobile-highlight'
   }));
@@ -53,17 +53,6 @@ export default function SidebarTutorial() {
 
   const steps = isMobile ? mobileSteps : desktopSteps;
 
-  // iOS Safari fix - ensure elements are interactable
-  const forceElementInteraction = () => {
-    if (typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
-      const elements = document.querySelectorAll(steps[currentStep]?.element || '');
-      elements.forEach(el => {
-        el.setAttribute('tabindex', '0');
-        el.setAttribute('role', 'button');
-      });
-    }
-  };
-
   // Check if elements exist before enabling steps
   useEffect(() => {
     if (stepsEnabled) {
@@ -73,7 +62,6 @@ export default function SidebarTutorial() {
           const element = document.querySelector(currentStepElement);
           if (element) {
             setElementsReady(true);
-            forceElementInteraction();
             return;
           }
         }
@@ -93,11 +81,10 @@ export default function SidebarTutorial() {
     const shouldShowTutorial = (showTutorial && !hasSeenTutorial) || forceTutorial;
 
     if (shouldShowTutorial) {
-      const delay = !hasSeenTutorial ? (isMobile ? 1000 : 1500) : 0;
+      const delay = !hasSeenTutorial ? (isMobile ? 500 : 1000) : 0;
       const timer = setTimeout(() => {
         setCurrentStep(savedStep ? parseInt(savedStep) : 0);
         setStepsEnabled(true);
-        setIsInitialized(true);
         
         if (!forceTutorial) {
           fetch('/api/update-user-metadata', {
@@ -125,12 +112,12 @@ export default function SidebarTutorial() {
     if (isMobile) {
       const nextRoute = sidebarRoutes[nextStepIndex];
       if (pathname !== nextRoute.href) {
+        setIsNavigating(true);
         sessionStorage.setItem('tutorialCurrentStep', nextStepIndex.toString());
         setStepsEnabled(false);
         
         router.replace(`${nextRoute.href}?tutorial=true&force=true`);
         
-        // Wait for navigation to complete
         await new Promise<void>(resolve => {
           const checkNavigation = () => {
             if (pathname === nextRoute.href) {
@@ -150,22 +137,6 @@ export default function SidebarTutorial() {
     return undefined;
   };
 
-  // iOS Safari specific fixes
-  useEffect(() => {
-    if (isInitialized && stepsEnabled) {
-      // Force tooltip to show on iOS
-      const showTooltip = () => {
-        if (introRef.current && typeof introRef.current.updateStep === 'function') {
-          introRef.current.updateStep(currentStep);
-        }
-      };
-      
-      // Add slight delay for iOS
-      const timer = setTimeout(showTooltip, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [isInitialized, stepsEnabled, currentStep]);
-
   return (
     <>
       <Steps
@@ -175,7 +146,6 @@ export default function SidebarTutorial() {
         onExit={() => {
           setStepsEnabled(false);
           setCurrentStep(0);
-          setIsInitialized(false);
         }}
         onStart={(intro) => {
           introRef.current = intro;
@@ -183,10 +153,7 @@ export default function SidebarTutorial() {
           sessionStorage.removeItem('tutorialCurrentStep');
         }}
         onBeforeChange={handleBeforeChange}
-        onAfterChange={(nextStepIndex) => {
-          setCurrentStep(nextStepIndex);
-          forceElementInteraction();
-        }}
+        onAfterChange={(nextStepIndex) => setCurrentStep(nextStepIndex)}
         options={{
           nextLabel: 'Next →',
           prevLabel: '← Back',
@@ -204,7 +171,6 @@ export default function SidebarTutorial() {
           positionPrecedence: isMobile ? ['bottom', 'top'] : ['right', 'left', 'bottom', 'top'],
           tooltipPosition: 'fixed',
           scrollPadding: isMobile ? 20 : 0,
-          highlightClass: isMobile ? 'mobile-highlight' : 'desktop-highlight'
         }}
       />
       
@@ -308,15 +274,10 @@ export default function SidebarTutorial() {
           pointer-events: none !important;
         }
         
-        /* iOS-specific highlight fix */
-        .mobile-highlight {
+        /* Highlight element */
+        .introjs-highlight {
           position: relative !important;
           z-index: 9998 !important;
-          -webkit-tap-highlight-color: rgba(0,0,0,0);
-        }
-        
-        .mobile-highlight:focus {
-          outline: none;
         }
         
         /* Tooltip reference layer */
