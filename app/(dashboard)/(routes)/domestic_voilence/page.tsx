@@ -29,7 +29,9 @@ import {
   Play,
   ChevronsUpDown,
   BookText,
-  AlertTriangle
+  AlertTriangle,
+  X,
+  Info
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -70,16 +72,26 @@ const DomesticViolenceReport = () => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [showRecordingControls, setShowRecordingControls] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout>();
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      prompt: "",
-    },
-  });
+  const [showHelpModal, setShowHelpModal] = useState(false);
+    const timerRef = useRef<NodeJS.Timeout>();
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+    const form = useForm<z.infer<typeof formSchema>>({
+      resolver: zodResolver(formSchema),
+      defaultValues: {
+        prompt: "",
+      },
+    });
+  
+    // Check if user has seen the help modal before
+    useEffect(() => {
+      const hasSeenHelp = localStorage.getItem('domesticReportHelpSeen');
+      if (!hasSeenHelp) {
+        setShowHelpModal(true);
+        localStorage.setItem('domesticReportHelpSeen', 'true');
+      }
+    }, []);
 
   // Format time to 00:00:00
   const formatTime = (seconds: number) => {
@@ -252,6 +264,42 @@ const DomesticViolenceReport = () => {
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] bg-gray-50">
+      {/* Help Modal */}
+                {showHelpModal && (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          Domestic Voilence Report Guide
+                        </h3>
+                        <button
+                          onClick={() => setShowHelpModal(false)}
+                          className="text-gray-400 hover:text-gray-500"
+                        >
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
+                      
+                      <div className="mb-6 text-gray-700 space-y-3">
+                        <p>
+                          <span className="font-semibold">1. Templates:</span> Select or create templates for standardized reporting formats.
+                        </p>
+                        <p>
+                          <span className="font-semibold">2. Input Methods:</span> Use voice dictation (click mic icon) or type manually.
+                        </p>
+                        <p>
+                          <span className="font-semibold">3. Auto-Formatting:</span> System generates complete reports from your input.
+                        </p>
+                      </div>            
+                      <Button 
+                        onClick={() => setShowHelpModal(false)} 
+                        className="w-full"
+                      >
+                        Got it!
+                      </Button>
+                    </div>
+                  </div>
+                )}
       {/* Header Section */}
       <div className="w-full flex justify-between items-center p-4 px-6 bg-white shadow-sm border-b">
         <div className="flex items-center space-x-4">
@@ -267,6 +315,16 @@ const DomesticViolenceReport = () => {
             </h1>
           </div>
         </div>
+
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={() => setShowHelpModal(true)}
+          className="text-blue-600 hover:text-blue-800"
+        >
+          <Info className="h-4 w-4 mr-2" />
+          Help
+        </Button>
       </div>
 
       {/* Main Content Area */}
@@ -348,7 +406,7 @@ const DomesticViolenceReport = () => {
               </div>
               
               <div className="w-full max-w-md">
-                <div className="flex items-center flex-col md:flex-row space-y-2 space-x-2">
+                <div className="flex items-center flex-col md:flex-row space-y-2 md:space-y-0 space-x-2">
                   <div className="relative flex-1 w-full">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
@@ -368,7 +426,7 @@ const DomesticViolenceReport = () => {
                   <Button
                     onClick={() => router.push("/create_template")}
                     variant="outline"
-                    className="space-x-2 w-full"
+                    className="space-x-2 w-full md:w-auto"
                   >
                     <Plus className="h-4 w-4" />
                     <span>Create New</span>
@@ -533,7 +591,7 @@ const DomesticViolenceReport = () => {
                 "bottom-40", // Default position
                 "md:bottom-44", // Slightly higher on medium screens
                 "lg:bottom-48", // Higher on large screens
-                "xl:bottom-56", // Even higher on extra large screens
+                "xl:bottom-[13rem]", // Even higher on extra large screens
                 "2xl:bottom-60", // Highest on 2xl screens
                 "left-0 right-0 pt-4 rounded-t-lg"
               )}>

@@ -20,9 +20,10 @@ export default function SidebarTutorial() {
   const router = useRouter();
   const pathname = usePathname();
   const showTutorial = searchParams.get("tutorial") === "true";
-  const isMobile = useMediaQuery("(max-width: 768px)");
+  const isMobile = useMediaQuery("(max-width: 768px)"); // Keep mobile detection
 
   // Define page-specific elements to highlight for mobile
+  /* Disabled mobile elements
   const pageElements: Record<string, string> = {
     "/chat": "#new-report-button",
     "/filing_cabinet": "#file-list",
@@ -32,8 +33,10 @@ export default function SidebarTutorial() {
     "/history": "#history-list",
     "/refer": "#referral-input"
   };
+  */
 
   // Mobile steps with guaranteed navigation
+  /* Disabled mobile steps
   const mobileSteps = sidebarRoutes.map((route, index) => ({
     element: pageElements[route.href] || 'body',
     intro: mobileTooltipContent(route.label, route.href, index + 1, sidebarRoutes.length),
@@ -41,6 +44,7 @@ export default function SidebarTutorial() {
     tooltipClass: 'mobile-tooltip',
     highlightClass: 'mobile-highlight'
   }));
+  */
 
   // Desktop steps
   const desktopSteps = sidebarRoutes.map((route, index) => ({
@@ -51,11 +55,11 @@ export default function SidebarTutorial() {
     highlightClass: 'desktop-highlight'
   }));
 
-  const steps = isMobile ? mobileSteps : desktopSteps;
+  const steps = isMobile ? [] : desktopSteps; // Empty array for mobile, desktop steps otherwise
 
   // Check if elements exist before enabling steps
   useEffect(() => {
-    if (stepsEnabled) {
+    if (stepsEnabled && !isMobile) { // Only check elements if not mobile
       const checkElements = () => {
         const currentStepElement = steps[currentStep]?.element;
         if (currentStepElement) {
@@ -69,11 +73,11 @@ export default function SidebarTutorial() {
       };
       checkElements();
     }
-  }, [stepsEnabled, currentStep, steps]);
+  }, [stepsEnabled, currentStep, steps, isMobile]);
 
   // Main tutorial initialization
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !userId || !user) return;
+    if (!isLoaded || !isSignedIn || !userId || !user || isMobile) return; // Skip if mobile
 
     const savedStep = sessionStorage.getItem('tutorialCurrentStep');
     const hasSeenTutorial = user.publicMetadata?.hasSeenTutorial as boolean || false;
@@ -81,7 +85,7 @@ export default function SidebarTutorial() {
     const shouldShowTutorial = (showTutorial && !hasSeenTutorial) || forceTutorial;
 
     if (shouldShowTutorial) {
-      const delay = !hasSeenTutorial ? (isMobile ? 500 : 1000) : 0;
+      const delay = !hasSeenTutorial ? 1000 : 0; // Desktop-only delay
       const timer = setTimeout(() => {
         setCurrentStep(savedStep ? parseInt(savedStep) : 0);
         setStepsEnabled(true);
@@ -109,6 +113,7 @@ export default function SidebarTutorial() {
 
   // Handle navigation
   const handleBeforeChange = async (nextStepIndex: number) => {
+    /* Disabled mobile navigation
     if (isMobile) {
       const nextRoute = sidebarRoutes[nextStepIndex];
       if (pathname !== nextRoute.href) {
@@ -132,15 +137,21 @@ export default function SidebarTutorial() {
         return false;
       }
     }
+    */
     
     setCurrentStep(nextStepIndex);
     return undefined;
   };
 
+  // Don't render Steps component at all if mobile
+  if (isMobile) {
+    return null;
+  }
+
   return (
     <>
       <Steps
-        enabled={stepsEnabled && elementsReady}
+        enabled={stepsEnabled && elementsReady && !isMobile} // Additional mobile check
         steps={steps}
         initialStep={currentStep}
         onExit={() => {
@@ -159,7 +170,7 @@ export default function SidebarTutorial() {
           prevLabel: '← Back',
           doneLabel: 'Got it!',
           skipLabel: 'Skip',
-          overlayOpacity: isMobile ? 0.4 : 0.6,
+          overlayOpacity: 0.6,
           showProgress: true,
           showBullets: true,
           exitOnEsc: true,
@@ -168,9 +179,9 @@ export default function SidebarTutorial() {
           keyboardNavigation: true,
           disableInteraction: false,
           scrollToElement: true,
-          positionPrecedence: isMobile ? ['bottom', 'top'] : ['right', 'left', 'bottom', 'top'],
+          positionPrecedence: ['right', 'left', 'bottom', 'top'],
           tooltipPosition: 'fixed',
-          scrollPadding: isMobile ? 20 : 0,
+          scrollPadding: 0,
         }}
       />
       
@@ -186,7 +197,7 @@ export default function SidebarTutorial() {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif !important;
         }
         
-        /* Mobile specific styles */
+        /* Mobile specific styles - disabled
         .mobile-tooltip {
           position: fixed !important;
           bottom: 10px !important;
@@ -203,13 +214,13 @@ export default function SidebarTutorial() {
           overflow-y: auto !important;
         }
         
-        /* Last step at top */
+        /* Last step at top - disabled
         .mobile-tooltip[data-position="top"] {
           top: 16px !important;
           bottom: auto !important;
         }
         
-        /* Compact content styling */
+        /* Compact content styling - disabled
         .mobile-tooltip-content {
           display: flex;
           flex-direction: column;
@@ -234,22 +245,24 @@ export default function SidebarTutorial() {
           margin-bottom: 0.25rem !important;
         }
         
-        /* Smaller buttons on mobile */
+        /* Smaller buttons on mobile - disabled
         .mobile-tooltip .introjs-button {
           padding: 0.4rem 0.5rem !important;
           font-size: 0.85rem !important;
           margin: 0.15rem !important;
         }
         
-        /* Adjust progress bar */
+        /* Adjust progress bar - disabled
         .mobile-tooltip .introjs-progress {
           margin-bottom: 0.5rem !important;
         }
+        */
         
         /* Desktop specific styles */
         .desktop-tooltip {
           position: fixed !important;
           top: 50% !important;
+          left: 270px !important;
           transform: translateY(-50%) !important;
           min-width: 300px !important;
           max-width: 380px !important;
@@ -360,7 +373,7 @@ export default function SidebarTutorial() {
         
         /* Text content */
         .introjs-tooltip-title {
-          font-size: ${isMobile ? '1.1rem' : '1.35rem'} !important;
+          font-size: 1.35rem !important; /* Fixed desktop size */
           margin-bottom: 0.2rem !important;
           color: white !important;
           font-weight: 600 !important;
@@ -368,8 +381,8 @@ export default function SidebarTutorial() {
         
         .introjs-tooltiptext {
           color: #E5E7EB !important;
-          font-size: ${isMobile ? '0.9rem' : '1rem'} !important;
-          line-height: ${isMobile ? '1.4' : '1.6'} !important;
+          font-size: 1rem !important; /* Fixed desktop size */
+          line-height: 1.6 !important; /* Fixed desktop line height */
           padding: 0.1rem !important;
         }
         
@@ -396,6 +409,7 @@ export default function SidebarTutorial() {
   );
 }
 
+/* Disabled mobile tooltip function
 function mobileTooltipContent(label: string, href: string, currentStep: number, totalSteps: number): string {
   const descriptions: Record<string, string> = {
     "/chat": "Start here to create a new report. Tap the microphone to dictate or type your report.",
@@ -415,6 +429,7 @@ function mobileTooltipContent(label: string, href: string, currentStep: number, 
     </div>
   `;
 }
+*/
 
 function desktopTooltipContent(label: string, currentStep: number, totalSteps: number): string {
   const descriptions: Record<string, string> = {

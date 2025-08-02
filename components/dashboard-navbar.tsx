@@ -42,10 +42,10 @@ const Navbar = async () => {
       <div className="hidden md:flex items-center gap-2 md:gap-4"> {/* Adjusted gap */}
         <ShowTutorialAgain 
           userId={userId ?? undefined} />
+      </div>
         <SignedIn>
           <UserButton afterSignOutUrl="/" />
         </SignedIn>
-      </div>
     </div>
   );
 };

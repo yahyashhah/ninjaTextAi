@@ -62,9 +62,9 @@ const Sidebar = ({ apiLimitCount = 0, isPro = false, userId, setSidebarOpen }: S
         ))}
       </div>
       
-      <div className="px-3 flex md:hidden">
+      {/* <div className="px-3 flex md:hidden">
         <ShowTutorialAgain userId={userId} setSidebarOpen={setSidebarOpen} />
-      </div>
+      </div> */}
       
       <FreeCounter isPro={isPro} apiLimitCount={apiLimitCount} />
     </div>
