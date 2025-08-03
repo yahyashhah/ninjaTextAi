@@ -623,7 +623,8 @@ const AccidentReport = () => {
           </div>
         )}
 
-        {/* Regular Input Section */}
+        {!message && !isLoading && (
+        <> 
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
@@ -669,11 +670,13 @@ const AccidentReport = () => {
             <ClipboardList className="h-4 w-4 text-gray-400" />
             <p className="text-xs xl:text-base text-gray-500 text-center">
               {showRecordingControls 
-                ? "Speak clearly to record details about the accident" 
-                : "Tip: Include location, time, involved parties, and damages for best results"}
+                ? "Speak clearly to record details about the arrest" 
+                : "Tip: Include location, time, suspect details, charges, and circumstances for best results"}
             </p>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

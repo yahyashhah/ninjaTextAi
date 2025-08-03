@@ -622,7 +622,8 @@ const ArrestReport = () => {
           </div>
         )}
 
-        {/* Regular Input Section */}
+        {!message && !isLoading && (
+        <> 
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
@@ -673,6 +674,8 @@ const ArrestReport = () => {
             </p>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
