@@ -1,4 +1,4 @@
-import { footerAccess, footerHelp, footerPages } from "@/constants/landingpage";
+import { footerAccess, footerHelp, footerPages, footerLegal } from "@/constants/landingpage";
 import Image from "next/image";
 import Link from "next/link";
 import React from "react";
@@ -28,17 +28,25 @@ const LandingFooter = () => {
             </Link>
           ))}
         </div>
-        <div className="flex flex-col gap-y-4 mb-6 md:mb-0">
-          <h1 className="font-semibold text-sm sm:text-base md:text-md lg:text-lg text-black">Help and Support</h1>
-          {footerHelp.map((item, index) => (
+        <div className="flex flex-col gap-y-4">
+          <h1 className="font-semibold text-sm sm:text-base md:text-md lg:text-lg text-black">Legal</h1>
+          {footerLegal.map((item, index) => (
             <Link key={index} href={item.href} className="text-sm sm:text-base text-gray-600 hover:text-black">
               {item.name}
             </Link>
           ))}
         </div>
-        <div className="flex flex-col gap-y-4">
+        <div className="flex flex-col gap-y-4 mb-6 md:mb-0">
           <h1 className="font-semibold text-sm sm:text-base md:text-md lg:text-lg text-black">Access</h1>
           {footerAccess.map((item, index) => (
+            <Link key={index} href={item.href} className="text-sm sm:text-base text-gray-600 hover:text-black">
+              {item.name}
+            </Link>
+          ))}
+        </div>
+        <div className="flex flex-col gap-y-4 mb-6 md:mb-0">
+          <h1 className="font-semibold text-sm sm:text-base md:text-md lg:text-lg text-black">Help and Support</h1>
+          {footerHelp.map((item, index) => (
             <Link key={index} href={item.href} className="text-sm sm:text-base text-gray-600 hover:text-black">
               {item.name}
             </Link>

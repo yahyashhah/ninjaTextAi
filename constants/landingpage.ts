@@ -116,6 +116,21 @@ export const footerAccess = [
   },
 ];
 
+export const footerLegal = [
+  {
+    name: "Terms of Use",
+    href: "https://docs.google.com/document/d/1eL5K26o7NVz5wxH7vK0xQunGncxP_bGF",
+  },
+  {
+    name: "Privacy Policy",
+    href: "https://docs.google.com/document/d/1_tkk-yykWE1JenX2hbS2Cea9lVKvSGI5",
+  },
+  {
+    name: "Security",
+    href: "https://docs.google.com/document/d/1X3NrgMc61dOBEElodqnU1SUzlOfv8SDf",
+  },
+];
+
 export const navItems = [
   { label: "Home", href: "/#home" },
   { label: "Features", href: "/#features" },
