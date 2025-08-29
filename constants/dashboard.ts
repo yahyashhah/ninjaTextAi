@@ -44,7 +44,7 @@ export const sidebarRoutes = [
     color: "text-orange-500",
   },
   {
-    label: "Accout Settings",
+    label: "Account Settings",
     icon: UserCircle,
     href: "/account_settings",
     color: "text-green-700",
