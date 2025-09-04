@@ -27,6 +27,7 @@ model User {
   email            String? @unique
   profileImageUrl  String?
   isPro            Boolean  @default(false)
+  isAdmin          Boolean  @default(false) // Add admin field
   proAccessGrantedBy String? 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -40,7 +41,13 @@ model User {
   referrals        ReferralReward[] @relation("referrals")
   referredBy       ReferralReward[] @relation("referredBy")
   templates        UploadTemplates[]
-  organizationMemberships OrganizationMember[]  // <-- ADD THIS LINE
+  organizationMemberships OrganizationMember[]
+  
+  // Add these new relations for tracking
+  reportEvents     ReportEvent[]
+  userActivities   UserActivity[]
+  systemErrors     SystemError[]
+  feedbacks        Feedback[] 
 }
 
 model OrganizationSubscription {
@@ -136,4 +143,64 @@ model UploadTemplates {
   reportTypes  String[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model ReportEvent {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String
+  user            User     @relation(fields: [userId], references: [clerkUserId], onDelete: Cascade)
+  reportType      String
+  processingTime  Int?     // in milliseconds
+  success         Boolean
+  templateUsed    String?
+  error           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([reportType])
+  @@index([createdAt])
+  @@index([success])
+}
+
+model UserActivity {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String
+  user      User     @relation(fields: [userId], references: [clerkUserId], onDelete: Cascade)
+  activity  String   // e.g., "login", "report_created", "template_created"
+  metadata  String?  // JSON string for additional data
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([activity])
+  @@index([createdAt])
+}
+
+model SystemError {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  type      String   // e.g., "api_error", "login_error", "report_generation_error"
+  message   String
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [clerkUserId], onDelete: Cascade)
+  metadata  String?  // JSON string for additional error context
+  createdAt DateTime @default(now())
+
+  @@index([type])
+  @@index([createdAt])
+  @@index([userId])
+}
+model Feedback {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String
+  user        User     @relation(fields: [userId], references: [clerkUserId], onDelete: Cascade)
+  rating      Int      // 1-5 stars
+  comment     String?
+  experience  String?  // Good, Bad, Neutral
+  wantsToSee  String?  // Features user wants to see
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([rating])
 }

@@ -7,9 +7,8 @@ import { checkSubscription } from "@/lib/subscription";
 import { cn } from "@/lib/utils";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import FeedbackWrapper from "@/components/FeedbackWrapper";
 
-
-// app/(dashboard)/layout.tsx
 const DashboardLayout = async ({ children }: { children: React.ReactNode }) => {
   const { userId, orgId } = auth();
 
@@ -17,7 +16,7 @@ const DashboardLayout = async ({ children }: { children: React.ReactNode }) => {
 
   const apiLimitCount = (await getApiLimit()) as number;
 
-  const isPro = !!(orgId 
+  const isPro: boolean = !!(orgId 
     ? await checkOrgSubscription(orgId)
     : await checkSubscription());
 
@@ -36,7 +35,9 @@ const DashboardLayout = async ({ children }: { children: React.ReactNode }) => {
               </span>
             </div>
           )}
-          {children}
+          <FeedbackWrapper userId={userId}>
+            {children}
+          </FeedbackWrapper>
         </div>
       </main>
       <Toaster />

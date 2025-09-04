@@ -1,14 +1,16 @@
 // middleware.ts
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
 interface UserPublicMetadata {
   hasSeenTutorial?: boolean;
+  admin?: boolean;
   // Add other metadata properties if needed
 }
 
-export default clerkMiddleware((auth, req) => {
-  const { userId, sessionClaims } = auth();
+export default clerkMiddleware(async (auth, req: NextRequest) => {
+  const { userId, sessionClaims } = await auth();
   const url = req.nextUrl;
 
   // Public routes
@@ -34,6 +36,14 @@ export default clerkMiddleware((auth, req) => {
 
   // Type assertion for session claims
   const metadata = sessionClaims?.public_metadata as UserPublicMetadata | undefined;
+
+  // Check if user is trying to access admin routes
+  if (url.pathname.startsWith('/admin')) {
+    if (!metadata?.admin) {
+      // Redirect non-admins away from admin routes
+      return NextResponse.redirect(new URL('/', url.origin));
+    }
+  }
 
   // For authenticated users going to /chat without tutorial flag
   if (userId && url.pathname === "/chat" && !url.searchParams.has("tutorial")) {

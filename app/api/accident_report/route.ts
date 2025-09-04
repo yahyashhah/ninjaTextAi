@@ -1,6 +1,7 @@
 import { checkApiLimit, increaseAPiLimit } from "@/lib/api-limits";
 import { saveHistoryReport } from "@/lib/history-reports";
 import { checkSubscription } from "@/lib/subscription";
+import { trackReportEvent, trackUserActivity } from "@/lib/tracking";
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import OpenAI from "openai/index.mjs";
@@ -15,11 +16,18 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+
 export async function POST(req: Request) {
+  let userId: string | null = null; // make accessible to catch
+  let startTime = Date.now();       // declare outside try
+
   try {
-    const { userId } = auth();
+    const authResult = auth();
+    userId = authResult.userId;
+
     const body = await req.json();
     const { prompt, selectedTemplate } = body;
+    startTime = Date.now();
 
     if (!userId) {
       return new NextResponse("Unauthorized User", { status: 401 });
@@ -65,14 +73,31 @@ export async function POST(req: Request) {
       { role: "user", content: prompt }
     ];
     
-    const response = await openai.chat.completions.create({
+      const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages,
+    });
+
+    const processingTime = Date.now() - startTime;
+
+    await trackReportEvent({
+      userId,
+      reportType: "accident",
+      processingTime,
+      success: true,
+      templateUsed: selectedTemplate?.id || null,
+    });
+
+    await trackUserActivity({
+      userId,
+      activity: "report_created",
+      metadata: { reportType: "accident", templateUsed: selectedTemplate?.id },
     });
 
     if (!isPro) {
       await increaseAPiLimit();
     }
+
     await saveHistoryReport(
       userId,
       `${Date.now()}`,
@@ -80,10 +105,31 @@ export async function POST(req: Request) {
       "accident"
     );
 
-    console.log(response);
     return NextResponse.json(response.choices[0].message, { status: 200 });
-  } catch (error) {
+  } catch (error: unknown) {
     console.log("[CONVERSATION_ERROR]", error);
+
+    const processingTime = Date.now() - startTime;
+
+    if (userId) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+
+      await trackReportEvent({
+        userId,
+        reportType: "accident",
+        processingTime,
+        success: false,
+        error: errorMessage,
+      });
+
+      await trackUserActivity({
+        userId,
+        activity: "report_failed",
+        metadata: { reportType: "accident", error: errorMessage },
+      });
+    }
+
     return new NextResponse("Internal Error", { status: 500 });
   }
 }
