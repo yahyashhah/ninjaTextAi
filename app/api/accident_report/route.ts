@@ -6,20 +6,25 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import OpenAI from "openai/index.mjs";
 
+import { matchCode, NIBRS_LOCATION_CODES, NIBRS_OFFENSE_CODES, NIBRS_PROPERTY_CODES, NIBRS_RELATIONSHIP_CODES, NIBRS_WEAPON_CODES } from "@/lib/nibrs/codes";
+import { validateNibrsPayload } from "@/lib/nibrs/Validator";
+import { NibrsExtract } from "@/lib/nibrs/schema";
+import { buildNibrsXML } from "@/lib/nibrs/xml";
+
 type ChatCompletionMessageParam = {
-  role: "system" | "user" | "assistant";  // These are the valid roles
-  content: string;  // Content will always be a string
+  role: "system" | "user" | "assistant";
+  content: string;
 };
+
 export const maxDuration = 60;
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-
 export async function POST(req: Request) {
-  let userId: string | null = null; // make accessible to catch
-  let startTime = Date.now();       // declare outside try
+  let userId: string | null = null;
+  let startTime = Date.now();
 
   try {
     const authResult = auth();
@@ -29,125 +34,196 @@ export async function POST(req: Request) {
     const { prompt, selectedTemplate } = body;
     startTime = Date.now();
 
-    if (!userId) {
-      return new NextResponse("Unauthorized User", { status: 401 });
-    }
-    if (!openai.apiKey) {
-      return new NextResponse("OpenAI API key is Invalid", { status: 500 });
-    }
-    if (!prompt) {
-      return new NextResponse("Prompt is required", { status: 400 });
-    }
+    if (!userId) return new NextResponse("Unauthorized User", { status: 401 });
+    if (!openai.apiKey) return new NextResponse("OpenAI API key is Invalid", { status: 500 });
+    if (!prompt) return new NextResponse("Prompt is required", { status: 400 });
 
     const freeTrail = await checkApiLimit();
     const isPro = await checkSubscription();
-
-    if (!freeTrail && !isPro) {
-      return new NextResponse("Free Trial has expired", { status: 403 });
-    }
+    if (!freeTrail && !isPro) return new NextResponse("Free Trial has expired", { status: 403 });
 
     const systemInstructions = selectedTemplate?.instructions || `
-      Task: Be a Professional Police Report writer and accurately extract the following details:
-      Required Information:
-      • Date and Time: Extract the date and time of the incident.
-      • Location: Specify the location.
-      • Involved Parties: Include exact text for involved parties.
-      • Sequence of Events: Outline events step by step.
-      • Statements: Capture statements by witnesses.
-      • Evidence: List any evidence provided.
-      • Injuries and Damages: Detail any injuries or damages.
-      • Resolution: Describe any outcomes.
-      • Officer Actions: Specify officer actions if mentioned.
-      • Body cam: Indicate if body cam footage was referenced.
-      • Additional Info: Add any other details.
+You are a NIBRS data extraction assistant and professional police report writer.
+From the user's free text, do TWO things:
 
-      Format the response in plain text suitable for MS Word.
-    `;
+1) Produce a NIBRS-aligned JSON object with these exact keys:
+{
+  "incidentNumber": string,
+  "incidentDate": "YYYY-MM-DD",
+  "incidentTime": "HH:mm" (if available, else omit),
+  "clearedExceptionally": "Y" | "N",
+  "exceptionalClearanceDate": "YYYY-MM-DD" (optional),
+  "offenseCode": string,          // Prefer official NIBRS code like 13A; if unsure, give a descriptive label we can map
+  "offenseAttemptedCompleted": "A" | "C",
+  "locationCode": string,         // prefer NIBRS location code; if unsure, give a descriptive label we can map
+  "weaponCode": string (optional),
+  "biasMotivationCode": string (optional),
+  "victim": {
+    "type": "I" | "B" | "F" | "G" | "L" | "O" | "P" | "R" | "S" | "U" (optional),
+    "age": number (optional),
+    "sex": "M" | "F" | "U" (optional),
+    "race": "W" | "B" | "I" | "A" | "P" | "U" (optional),
+    "ethnicity": "H" | "N" | "U" (optional),
+    "injury": string (optional)
+  },
+  "offender": {
+    "age": number (optional),
+    "sex": "M" | "F" | "U" (optional),
+    "race": "W" | "B" | "I" | "A" | "P" | "U" (optional),
+    "ethnicity": "H" | "N" | "U" (optional),
+    "relationshipToVictim": string (optional)
+  },
+  "property": {
+    "lossType": string (optional),
+    "descriptionCode": string (optional),
+    "value": number (optional)
+  }
+}
 
-    // Ensure messages has the correct type
+2) Produce a clear professional narrative paragraph(s) for MS Word.
+
+IMPORTANT:
+- Return a SINGLE JSON document with top-level keys "nibrs" and "narrative" ONLY:
+  {
+    "nibrs": { ...exact structure above... },
+    "narrative": "..."
+  }
+- Use double quotes and valid JSON. Do not add markdown, comments, or extra text.
+`;
+
     const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: systemInstructions },
       ...(selectedTemplate?.examples
-        ? [{ role: "system" as "system", content: `Example Report:\n${selectedTemplate.examples}` }]
+        ? [{ role: "system" as const, content: `Example Report:\n${selectedTemplate.examples}` }]
         : []),
       { role: "user", content: prompt }
     ];
-    
-      const response = await openai.chat.completions.create({
+
+    // Get structured output
+    const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages,
+      temperature: 0.2,
     });
 
-    const processingTime = Date.now() - startTime;
+    const raw = completion.choices?.[0]?.message?.content ?? "";
+    let parsed: { nibrs: Partial<NibrsExtract>; narrative: string };
 
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      throw new Error("Model did not return valid JSON. Raw response: " + raw);
+    }
+
+    // --- Mapping / Normalization ---
+    const n = parsed.nibrs || {};
+    // Ensure incidentNumber exists (fallback)
+    if (!n.incidentNumber) {
+      n.incidentNumber = `INC-${Date.now()}`;
+    }
+
+    // Try to map descriptive offense/location/etc. to codes if needed
+    const mapped: Partial<NibrsExtract> = { ...n };
+
+    if (mapped.offenseCode && !/^[0-9A-Z]{3}$/.test(mapped.offenseCode)) {
+      const m = matchCode(mapped.offenseCode, NIBRS_OFFENSE_CODES);
+      if (m) mapped.offenseCode = m;
+    }
+
+    if (mapped.locationCode && !/^[0-9]{2}$/.test(mapped.locationCode)) {
+      const m = matchCode(mapped.locationCode, NIBRS_LOCATION_CODES);
+      if (m) mapped.locationCode = m;
+    }
+
+    if (mapped.weaponCode && !/^[0-9]{2}$/.test(mapped.weaponCode)) {
+      const m = matchCode(mapped.weaponCode, NIBRS_WEAPON_CODES);
+      if (m) mapped.weaponCode = m;
+    }
+
+    if (mapped.property?.descriptionCode && !/^[0-9]{2}$/.test(mapped.property.descriptionCode)) {
+      const m = matchCode(mapped.property.descriptionCode, NIBRS_PROPERTY_CODES);
+      mapped.property = {
+        ...mapped.property,
+        descriptionCode: m || mapped.property.descriptionCode
+      };
+    }
+
+    if (mapped.offender?.relationshipToVictim && !/^[A-Z]{2}$/.test(mapped.offender.relationshipToVictim)) {
+      const m = matchCode(mapped.offender.relationshipToVictim, NIBRS_RELATIONSHIP_CODES);
+      mapped.offender = {
+        ...mapped.offender,
+        relationshipToVictim: m || mapped.offender.relationshipToVictim
+      };
+    }
+
+    // Defaults
+    mapped.offenseAttemptedCompleted = mapped.offenseAttemptedCompleted || "C";
+    mapped.clearedExceptionally = mapped.clearedExceptionally || "N";
+
+    // Attach narrative
+    const narrative = (parsed.narrative || "").trim();
+    if (!narrative) throw new Error("Narrative missing from model output");
+    mapped.narrative = narrative;
+
+    // Validate
+    const { ok, data, errors } = validateNibrsPayload(mapped);
+    if (!ok || !data) {
+      throw new Error("NIBRS validation failed: " + (errors?.join("; ") || "Unknown error"));
+    }
+
+    // Build XML
+    const xml = buildNibrsXML(data);
+
+    const processingTime = Date.now() - startTime;
     await trackReportEvent({
-      userId,
+      userId: userId!,
       reportType: "accident",
       processingTime,
       success: true,
       templateUsed: selectedTemplate?.id || null,
     });
-
     await trackUserActivity({
-      userId,
+      userId: userId!,
       activity: "report_created",
       metadata: { reportType: "accident", templateUsed: selectedTemplate?.id },
     });
+    if (!isPro) await increaseAPiLimit();
 
-    if (!isPro) {
-      await increaseAPiLimit();
-    }
-
+    // Save the human-readable narrative to history (as before)
     await saveHistoryReport(
-      userId,
+      userId!,
       `${Date.now()}`,
-      response.choices[0].message.content || "",
+      narrative,
       "accident"
     );
 
-    return NextResponse.json(response.choices[0].message, { status: 200 });
-  } catch (error: unknown) {
-    console.log("[CONVERSATION_ERROR]", error);
+    return NextResponse.json(
+      {
+        narrative,
+        nibrs: data,
+        xml, // frontend will create a download from this string
+      },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.log("[ACCIDENT_REPORT_ERROR]", error?.message || error);
 
     const processingTime = Date.now() - startTime;
-
     if (userId) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-
       await trackReportEvent({
         userId,
         reportType: "accident",
         processingTime,
         success: false,
-        error: errorMessage,
+        error: error?.message || "Unknown error",
       });
-
       await trackUserActivity({
         userId,
         activity: "report_failed",
-        metadata: { reportType: "accident", error: errorMessage },
+        metadata: { reportType: "accident", error: error?.message || "Unknown error" },
       });
     }
 
-    return new NextResponse("Internal Error", { status: 500 });
+    return new NextResponse(error?.message || "Internal Error", { status: 500 });
   }
 }
-
-// Task: Be professional Police Report writer. Write an accident report using only information given below. Make sure to use the provided format, and any information that is not mentioned in the text given below. Please indicate in a paragraph at the end.
-//                 Please provide a detailed account of the accident, including the following information:
-//                 Audience: Police Officer
-//                 Note: Strictly follow the format and be to the point while providing details. Don't add additional details by yourself.
-//                 Output Format:
-//                 • Date and Time: When did the accident occur?
-//                 • Location: Where did the accident take place?
-//                 • Involved Parties: Who was involved? Include names, descriptions, and roles (e.g., drivers, passengers, pedestrians).
-//                 • Sequence of Events: Describe what happened leading up to, during, and after the accident. Include weather conditions and road conditions.
-//                 • Witness Statements: Summarize any statements made by witnesses.
-//                 • Evidence: Describe any evidence collected at the scene (e.g., skid marks, vehicle damage).
-//                 • Injuries and Damages: Note any injuries sustained and damages observed.
-//                 • Resolution: What was the outcome of the accident? Include any citations issued, insurance information exchanged, and reports filed.
-//                 • Officer Actions: Detail any actions you took at the accident scene, including traffic control and medical assistance provided.
-//                 • Body cam: Was a body cam used?
-//                 • Additional Info: If any?
-//                 Format: Plain text that can be used for MSWord
