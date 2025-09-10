@@ -52,13 +52,15 @@ export function validateNibrsPayload(raw: unknown): {
       }
 
       // Offender validation - only if offender data exists
-      if (d.offender) {
-        (template.requiredOffender as string[]).forEach((f: keyof typeof d.offender) => {
-          if (d.offender && (d.offender[f] === undefined || d.offender[f] === null || d.offender[f] === "")) {
-            warnings.push(`Offender ${f} is recommended for offense ${d.offenseCode}`);
-          }
-        });
-      }
+      if (d.victim) {
+  template.requiredVictim.forEach((f) => {
+    const key = f as keyof typeof d.victim; // cast to correct type
+    if (d.victim && (d.victim[key] === undefined || d.victim[key] === null || d.victim[key] === "")) {
+      warnings.push(`Victim ${key} is recommended for offense ${d.offenseCode}`);
+    }
+  });
+}
+
 
       // Property validation
       if (template.requiredProperty && !d.property) {
