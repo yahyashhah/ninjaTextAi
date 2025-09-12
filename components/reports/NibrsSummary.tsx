@@ -1,7 +1,8 @@
-// components/reports/sub-components/NIBRSSummary.tsx
+// components/reports/sub-components/NIBRSSummary.tsx - ENHANCED
 import { ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import downloadXML from "@/lib/nibrs/downloadXML";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface NIBRSSummaryProps {
   nibrs: any;
@@ -9,6 +10,13 @@ interface NIBRSSummaryProps {
 }
 
 const NibrsSummary = ({ nibrs, xmlData }: NIBRSSummaryProps) => {
+  // Calculate total property value
+  const totalPropertyValue = nibrs.properties?.reduce((total: number, property: any) => {
+    return total + (property.value || 0);
+  }, 0) || 0;
+
+  console.log("Enhanced NIBRS Data:", nibrs);
+
   return (
     <div className="mb-6 bg-white p-4 rounded-lg shadow-sm border">
       <div className="flex items-center justify-between mb-3">
@@ -20,19 +28,129 @@ const NibrsSummary = ({ nibrs, xmlData }: NIBRSSummaryProps) => {
           Download NIBRS XML
         </Button>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-700">
+
+      {/* Basic Incident Information */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-700 mb-4">
         <div><span className="font-medium">Incident #:</span> {nibrs.incidentNumber}</div>
         <div><span className="font-medium">Date:</span> {nibrs.incidentDate} {nibrs.incidentTime ? `@ ${nibrs.incidentTime}` : ""}</div>
-        <div><span className="font-medium">Offense Code:</span> {nibrs.offenseCode}</div>
         <div><span className="font-medium">Location Code:</span> {nibrs.locationCode}</div>
-        {nibrs.weaponCode && <div><span className="font-medium">Weapon Code:</span> {nibrs.weaponCode}</div>}
         <div><span className="font-medium">Cleared Exceptionally:</span> {nibrs.clearedExceptionally}</div>
-        {nibrs.victim?.age !== undefined && <div><span className="font-medium">Victim Age:</span> {nibrs.victim.age}</div>}
-        {nibrs.victim?.sex && <div><span className="font-medium">Victim Sex:</span> {nibrs.victim.sex}</div>}
-        {nibrs.offender?.age !== undefined && <div><span className="font-medium">Offender Age:</span> {nibrs.offender.age}</div>}
-        {nibrs.offender?.relationshipToVictim && <div><span className="font-medium">Relationship:</span> {nibrs.offender.relationshipToVictim}</div>}
-        {nibrs.property?.descriptionCode && <div><span className="font-medium">Property:</span> {nibrs.property.descriptionCode} {typeof nibrs.property.value === "number" ? `($${nibrs.property.value})` : ""}</div>}
+        {nibrs.clearedBy && <div><span className="font-medium">Cleared By:</span> {nibrs.clearedBy}</div>}
       </div>
+
+      {/* Multiple Offenses Section */}
+      {nibrs.offenses && nibrs.offenses.length > 0 && (
+        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+          <h4 className="font-medium text-blue-800 mb-2">Offenses ({nibrs.offenses.length})</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {nibrs.offenses.map((offense: any, index: number) => (
+              <div key={index} className="text-sm bg-white p-2 rounded border">
+                <div><span className="font-medium">Code:</span> {offense.code}</div>
+                <div><span className="font-medium">Description:</span> {offense.description}</div>
+                <div><span className="font-medium">Status:</span> {offense.attemptedCompleted === "A" ? "Attempted" : "Completed"}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Multiple Victims Section */}
+      {nibrs.victims && nibrs.victims.length > 0 && (
+        <div className="mb-4 p-3 bg-green-50 rounded-lg">
+          <h4 className="font-medium text-green-800 mb-2">Victims ({nibrs.victims.length})</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {nibrs.victims.map((victim: any, index: number) => (
+              <div key={index} className="text-sm bg-white p-2 rounded border">
+                <div><span className="font-medium">Type:</span> {victim.type}</div>
+                {victim.age && <div><span className="font-medium">Age:</span> {victim.age}</div>}
+                {victim.sex && <div><span className="font-medium">Sex:</span> {victim.sex}</div>}
+                {victim.race && <div><span className="font-medium">Race:</span> {victim.race}</div>}
+                {victim.ethnicity && <div><span className="font-medium">Ethnicity:</span> {victim.ethnicity}</div>}
+                {victim.injury && <div><span className="font-medium">Injury:</span> {victim.injury}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Multiple Offenders Section */}
+      {nibrs.offenders && nibrs.offenders.length > 0 && (
+        <div className="mb-4 p-3 bg-red-50 rounded-lg">
+          <h4 className="font-medium text-red-800 mb-2">Offenders ({nibrs.offenders.length})</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {nibrs.offenders.map((offender: any, index: number) => (
+              <div key={index} className="text-sm bg-white p-2 rounded border">
+                {offender.age && <div><span className="font-medium">Age:</span> {offender.age}</div>}
+                {offender.sex && <div><span className="font-medium">Sex:</span> {offender.sex}</div>}
+                {offender.race && <div><span className="font-medium">Race:</span> {offender.race}</div>}
+                {offender.ethnicity && <div><span className="font-medium">Ethnicity:</span> {offender.ethnicity}</div>}
+                {offender.relationshipToVictim && (
+                  <div><span className="font-medium">Relationship:</span> {
+                    offender.relationshipToVictim === "BU" ? "Business" :
+                    offender.relationshipToVictim === "SE" ? "Stranger" :
+                    offender.relationshipToVictim === "AQ" ? "Acquaintance" :
+                    offender.relationshipToVictim
+                  }</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Multiple Properties Section - ENHANCED */}
+      {nibrs.properties && nibrs.properties.length > 0 && (
+        <div className="mb-4 p-3 bg-purple-50 rounded-lg">
+          <h4 className="font-medium text-purple-800 mb-2">Properties ({nibrs.properties.length})</h4>
+          <div className="mb-2">
+            <span className="font-medium">Total Value: </span>
+            ${totalPropertyValue.toLocaleString()}
+          </div>
+          <div className="grid grid-cols-1 gap-2">
+            {nibrs.properties.map((property: any, index: number) => (
+              <div key={index} className="text-sm bg-white p-3 rounded border">
+                <div className="grid grid-cols-2 gap-2">
+                  <div><span className="font-medium">Code:</span> {property.descriptionCode}</div>
+                  <div><span className="font-medium">Loss Type:</span> {
+                    property.lossType === "1" ? "Stolen" :
+                    property.lossType === "5" ? "Damaged" :
+                    property.lossType
+                  }</div>
+                </div>
+                <div><span className="font-medium">Description:</span> {property.description}</div>
+                {property.value && (
+                  <div><span className="font-medium">Value:</span> ${property.value.toLocaleString()}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Weapon Codes */}
+      {nibrs.weaponCodes && nibrs.weaponCodes.length > 0 && (
+        <div className="mb-4 p-3 bg-orange-50 rounded-lg">
+          <h4 className="font-medium text-orange-800 mb-2">Weapons</h4>
+          <div className="text-sm bg-white p-2 rounded border">
+            <span className="font-medium">Codes:</span> {nibrs.weaponCodes.join(", ")}
+          </div>
+        </div>
+      )}
+
+      {/* Data Quality Indicator */}
+      <Alert className="bg-gray-50 border-gray-200">
+        <AlertDescription className="text-sm">
+          <span className="font-medium">Data Summary:</span> {
+            nibrs.offenses?.length > 1 ? "Multiple offenses" : "Single offense"
+          }, {
+            nibrs.victims?.length > 0 ? `${nibrs.victims.length} victim(s)` : "No victims"
+          }, {
+            nibrs.offenders?.length > 0 ? `${nibrs.offenders.length} offender(s)` : "No offenders"
+          }, {
+            nibrs.properties?.length > 0 ? `${nibrs.properties.length} property item(s)` : "No properties"
+          }
+        </AlertDescription>
+      </Alert>
     </div>
   );
 };

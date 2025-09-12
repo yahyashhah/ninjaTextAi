@@ -12,31 +12,33 @@ export interface DescriptiveExtract {
   incidentTime?: string;
   clearedExceptionally?: "Y" | "N";
   exceptionalClearanceDate?: string;
-  offenseDescription?: string;
-  offenseAttemptedCompleted?: "A" | "C";
+  offenses?: Array<{
+    description?: string;
+    attemptedCompleted?: "A" | "C";
+  }>;
   locationDescription?: string;
-  weaponDescription?: string;
+  weaponDescriptions?: string[];
   biasMotivation?: string;
-  victim?: {
+  victims?: Array<{
     type?: string;
     age?: number;
     sex?: "M" | "F" | "U";
     race?: string;
     ethnicity?: string;
     injury?: string;
-  };
-  offender?: {
+  }>;
+  offenders?: Array<{
     age?: number;
     sex?: "M" | "F" | "U";
     race?: string;
     ethnicity?: string;
     relationshipDescription?: string;
-  };
-  property?: {
+  }>;
+  properties?: Array<{
     lossDescription?: string;
     propertyDescription?: string;
     value?: number;
-  };
+  }>;
   narrative?: string;
 }
 
@@ -111,8 +113,6 @@ export class NibrsMapper {
     
     cloned.incidentNumber = cloned.incidentNumber || 
       `${this.DEFAULT_VALUES.INCIDENT_NUMBER_PREFIX}${Date.now()}`;
-    cloned.offenseAttemptedCompleted = cloned.offenseAttemptedCompleted || 
-      this.DEFAULT_VALUES.DEFAULT_OFFENSE_ATTEMPTED;
     cloned.clearedExceptionally = cloned.clearedExceptionally || 
       this.DEFAULT_VALUES.DEFAULT_CLEARED;
 
@@ -121,44 +121,49 @@ export class NibrsMapper {
       cloned.clearedBy = "A";
     }
 
-    if (cloned.victim && !this.isVictimlessOffense(cloned.offenseCode)) {
-      cloned.victim.type = cloned.victim.type || this.DEFAULT_VALUES.DEFAULT_VICTIM_TYPE;
-      cloned.victim.race = cloned.victim.race || this.DEFAULT_VALUES.DEFAULT_RACE;
-      cloned.victim.sex = cloned.victim.sex || this.DEFAULT_VALUES.DEFAULT_SEX;
-      cloned.victim.ethnicity = cloned.victim.ethnicity || this.DEFAULT_VALUES.DEFAULT_ETHNICITY;
-      
-      if (cloned.victim.age !== undefined && cloned.victim.age !== null) {
-        cloned.victim.age = Math.max(0, Math.min(130, Number(cloned.victim.age)));
-      }
-    } else if (this.isVictimlessOffense(cloned.offenseCode)) {
-      delete cloned.victim;
+    // Handle multiple offenses
+    if (cloned.offenses && Array.isArray(cloned.offenses)) {
+      cloned.offenses = cloned.offenses.map((offense: any) => ({
+        ...offense,
+        attemptedCompleted: offense.attemptedCompleted || this.DEFAULT_VALUES.DEFAULT_OFFENSE_ATTEMPTED
+      }));
     }
 
-    if (cloned.offender) {
-      cloned.offender.race = cloned.offender.race || this.DEFAULT_VALUES.DEFAULT_RACE;
-      cloned.offender.sex = cloned.offender.sex || this.DEFAULT_VALUES.DEFAULT_SEX;
-      cloned.offender.ethnicity = cloned.offender.ethnicity || this.DEFAULT_VALUES.DEFAULT_ETHNICITY;
-      
-      if (cloned.offender.age !== undefined && cloned.offender.age !== null) {
-        cloned.offender.age = Math.max(0, Math.min(130, Number(cloned.offender.age)));
-      }
-      
-      if (!this.isVictimlessOffense(cloned.offenseCode)) {
-  cloned.offender.relationshipToVictim = 
-    cloned.offender.relationshipToVictim 
-      || this.mapRelationship(cloned.offender.relationshipDescription) 
-      || "UN";
-}
+    // Handle multiple victims
+    if (cloned.victims && Array.isArray(cloned.victims)) {
+      cloned.victims = cloned.victims.map((victim: any) => ({
+        ...victim,
+        type: victim.type || this.DEFAULT_VALUES.DEFAULT_VICTIM_TYPE,
+        race: victim.race || this.DEFAULT_VALUES.DEFAULT_RACE,
+        sex: victim.sex || this.DEFAULT_VALUES.DEFAULT_SEX,
+        ethnicity: victim.ethnicity || this.DEFAULT_VALUES.DEFAULT_ETHNICITY,
+        age: victim.age !== undefined && victim.age !== null 
+          ? Math.max(0, Math.min(130, Number(victim.age))) 
+          : undefined
+      }));
     }
 
-    if (cloned.property) {
-      if (cloned.property.value !== undefined && cloned.property.value !== null) {
-        cloned.property.value = Math.max(0, Number(cloned.property.value));
-      }
-      
-      if (!cloned.property.lossType && cloned.property.value > 0) {
-        cloned.property.lossType = "5";
-      }
+    // Handle multiple offenders
+    if (cloned.offenders && Array.isArray(cloned.offenders)) {
+      cloned.offenders = cloned.offenders.map((offender: any) => ({
+        ...offender,
+        race: offender.race || this.DEFAULT_VALUES.DEFAULT_RACE,
+        sex: offender.sex || this.DEFAULT_VALUES.DEFAULT_SEX,
+        ethnicity: offender.ethnicity || this.DEFAULT_VALUES.DEFAULT_ETHNICITY,
+        age: offender.age !== undefined && offender.age !== null 
+          ? Math.max(0, Math.min(130, Number(offender.age))) 
+          : undefined
+      }));
+    }
+
+    // Handle multiple properties
+    if (cloned.properties && Array.isArray(cloned.properties)) {
+      cloned.properties = cloned.properties.map((property: any) => ({
+        ...property,
+        value: property.value !== undefined && property.value !== null 
+          ? Math.max(0, Number(property.value)) 
+          : undefined
+      }));
     }
 
     return cloned;
@@ -227,7 +232,7 @@ export class NibrsMapper {
           "assault": "13A", "attack": "13A", "hit": "13A", "slap": "13B", "punch": "13B",
           "robbery": "120", "armed robbery": "121", "robbery with weapon": "121",
           "theft": "23H", "steal": "23H", "shoplift": "23F", "shoplifting": "23F",
-          "burglary": "220", "break in": "220", "breaking entering": "220",
+          "burglary": "220", "break in": "220", "breaking entering": "220", "forced entry": "220",
           "auto theft": "240", "car theft": "240", "vehicle theft": "240",
           "vandalism": "290", "graffiti": "290", "damage property": "290",
           "hacking": "26C", "unauthorized access": "26C", "computer intrusion": "26C",
@@ -262,40 +267,62 @@ export class NibrsMapper {
   }
 
   static mapOffense(description: string | undefined): MappingResult {
-    if (!description) return { code: "", confidence: 0 };
+    if (!description) return { code: "", confidence: 0, originalInput: description };
     
-    const inputLower = description.toLowerCase();
+    const inputLower = description.toLowerCase().trim();
+    console.log(`[MAPPER] Mapping offense: "${description}" -> "${inputLower}"`);
     
+    // 1. Exact match first
+    if (NIBRS_OFFENSE_CODES[inputLower]) {
+      console.log(`[MAPPER] Exact match found: ${NIBRS_OFFENSE_CODES[inputLower]}`);
+      return { 
+        code: NIBRS_OFFENSE_CODES[inputLower], 
+        confidence: 1.0, 
+        originalInput: description 
+      };
+    }
+    
+    // 2. Priority rules for common patterns
     const priorityRules: Array<[RegExp, string, number]> = [
       [/shoplift|conceal.*merchandise|retail.theft/i, '23F', 0.95],
       [/credit.card|identity.theft|open.*account/i, '26A', 0.95],
       [/drug.*sale|sell.*drug|trafficking|deal.*drug/i, '35B', 0.95],
-      [/drug.*cocaine|cocaine.*possession/i, '35C', 0.9],
-      [/weapon.*school|knife.*school|weapon.*violation/i, '520', 0.9],
-      [/intoxication|drunk|public.drink|alcohol.*public/i, '90C', 0.9],
-      [/hit.run|hit.and.run|fled.*scene|leave.*scene/i, '240', 0.9],
-      [/hack|unauthorized.access|computer.intrusion/i, '26C', 0.9],
+      [/burglary|break.in|breaking.entering|forced.entry/i, '220', 0.95],
       [/robbery.*knife|robbery.*weapon|armed.robbery/i, '121', 0.9],
       [/vandalism|graffiti|damage.*property|destroy.*property/i, '290', 0.9],
-      [/burglary|break.in|breaking.entering/i, '220', 0.9],
       [/auto.theft|car.theft|vehicle.theft/i, '240', 0.9],
-      [/robbery.*force|unarmed.robbery/i, '120', 0.8],
-      [/drug.*possession|narcotic.*possession/i, '35A', 0.8],
+      [/hack|unauthorized.access|computer.intrusion/i, '26C', 0.9],
       [/assault.*aggravated|serious.*injury|weapon.*assault/i, '13A', 0.8],
       [/assault.*simple|minor.*injury|slap|punch/i, '13B', 0.8],
+      [/theft|steal|stolen|taken/i, '23H', 0.7],
+      [/fraud|scam|deception/i, '26A', 0.7],
+      [/weapon|firearm|gun|knife/i, '520', 0.7],
+      [/intoxication|drunk|public.drink|alcohol/i, '90C', 0.7],
     ];
     
     for (const [regex, code, confidence] of priorityRules) {
       if (regex.test(inputLower)) {
+        console.log(`[MAPPER] Priority rule matched: ${regex} -> ${code}`);
         return { code, confidence, originalInput: description };
       }
     }
     
-    return this.findBestMatch(description, NIBRS_OFFENSE_CODES, "offense");
+    // 3. Best match fallback
+    const bestMatch = this.findBestMatch(description, NIBRS_OFFENSE_CODES, "offense");
+    console.log(`[MAPPER] Best match result: ${bestMatch.code} (confidence: ${bestMatch.confidence})`);
+    
+    // 4. Final fallback if still no match
+    if (!bestMatch.code || bestMatch.confidence < 0.3) {
+      console.log(`[MAPPER] Using fallback offense code: 13A`);
+      return { code: "13A", confidence: 0.2, originalInput: description };
+    }
+    
+    return bestMatch;
   }
 
   static mapLocation(description: string | undefined, offenseCode?: string): MappingResult {
     const inputLower = (description || '').toLowerCase();
+    console.log(`[MAPPER] Mapping location: "${description}"`);
     
     // Cyber crimes → victim's home
     if (offenseCode?.startsWith('26')) {
@@ -324,12 +351,19 @@ export class NibrsMapper {
     if (/restaurant|cafe|bar|diner/i.test(inputLower)) {
       return { code: "06", confidence: 0.9, originalInput: description };
     }
+    if (/apartment|condo|residence|home|house/i.test(inputLower)) {
+      return { code: "20", confidence: 0.9, originalInput: description };
+    }
     
-    return this.findBestMatch(description, NIBRS_LOCATION_CODES, "location");
+    const result = this.findBestMatch(description, NIBRS_LOCATION_CODES, "location");
+    console.log(`[MAPPER] Location mapping result: ${result.code} (confidence: ${result.confidence})`);
+    return result;
   }
 
   static mapWeapon(description: string | undefined): MappingResult {
-    if (!description) return { code: "", confidence: 0 };
+    if (!description) return { code: "", confidence: 0, originalInput: description };
+    
+    console.log(`[MAPPER] Mapping weapon: "${description}"`);
     
     // Specific weapon detection
     const inputLower = description.toLowerCase();
@@ -340,44 +374,46 @@ export class NibrsMapper {
       return { code: "40", confidence: 0.9, originalInput: description };
     }
     
-    return this.findBestMatch(description, NIBRS_WEAPON_CODES, "weapon");
+    const result = this.findBestMatch(description, NIBRS_WEAPON_CODES, "weapon");
+    console.log(`[MAPPER] Weapon mapping result: ${result.code} (confidence: ${result.confidence})`);
+    return result;
   }
 
-  static mapRelationship(description?: string, narrative?: string | undefined): string {
-  if (!description) return "UN"; // Default unknown
-  const desc = description.toLowerCase().trim();
+   static mapRelationship(description?: string, narrative?: string | undefined): string {
+    if (!description) return "UN"; // Default unknown
+    const desc = description.toLowerCase().trim();
 
-  // Direct match first
-  if (NIBRS_RELATIONSHIP_CODES[desc]) return NIBRS_RELATIONSHIP_CODES[desc];
+    console.log(`[MAPPER] Mapping relationship: "${description}"`);
 
-  // Partial matching fallback
-  for (const [key, code] of Object.entries(NIBRS_RELATIONSHIP_CODES)) {
-    if (desc.includes(key)) return code;
-  }
+    // Direct match first
+    if (NIBRS_RELATIONSHIP_CODES[desc]) {
+      console.log(`[MAPPER] Relationship exact match: ${NIBRS_RELATIONSHIP_CODES[desc]}`);
+      return NIBRS_RELATIONSHIP_CODES[desc];
+    }
 
-  return "UN"; // Default if nothing matches
-}
+    // Partial matching fallback
+    for (const [key, code] of Object.entries(NIBRS_RELATIONSHIP_CODES)) {
+      if (desc.includes(key)) {
+        console.log(`[MAPPER] Relationship partial match: ${key} -> ${code}`);
+        return code;
+      }
+    }
 
-  static mapProperty(description: string | undefined): MappingResult {
-    if (!description) return { code: "", confidence: 0 };
-    
-    const inputLower = description.toLowerCase();
-    
-    // Specific property detection
-    if (/vehicle|car|auto|truck|honda|ford|chevrolet/i.test(inputLower)) {
-      return { code: "24", confidence: 0.95, originalInput: description };
+    // Check narrative for relationship clues if description is vague
+    if (narrative && (desc === "unknown" || desc === "stranger" || desc === "")) {
+      const narrativeLower = narrative.toLowerCase();
+      if (narrativeLower.includes("known") || narrativeLower.includes("acquaintance")) {
+        console.log(`[MAPPER] Relationship inferred from narrative: AQ`);
+        return "AQ";
+      }
+      if (narrativeLower.includes("family") || narrativeLower.includes("relative")) {
+        console.log(`[MAPPER] Relationship inferred from narrative: OF`);
+        return "OF";
+      }
     }
-    if (/money|cash|currency|dollar|fund/i.test(inputLower)) {
-      return { code: "07", confidence: 0.95, originalInput: description };
-    }
-    if (/electronic|computer|laptop|tablet|phone|television/i.test(inputLower)) {
-      return { code: "20", confidence: 0.9, originalInput: description };
-    }
-    if (/jewelry|ring|necklace|watch|gold|silver/i.test(inputLower)) {
-      return { code: "37", confidence: 0.9, originalInput: description };
-    }
-    
-    return this.findBestMatch(description, NIBRS_PROPERTY_CODES, "property");
+
+    console.log(`[MAPPER] Relationship default: UN`);
+    return "UN"; // Default if nothing matches
   }
 
   static mapLossType(description: string | undefined): string {
@@ -388,7 +424,8 @@ export class NibrsMapper {
       "embezzled": "2", "embezzle": "2",
       "counterfeit": "3", "fake": "3",
       "destroyed": "4", "destroy": "4", "demolished": "4", "shattered": "4",
-      "damaged": "5", "damage": "5", "broken": "5", "crashed": "5", "vandalized": "5",
+      "damaged": "5", "damage": "5", "broken": "5", "crashed": "5", 
+      "vandalized": "5", "graffiti": "5", "spray-painted": "5", // ENHANCED
       "recovered": "6", "recover": "6", "found": "6",
       "seized": "7", "seize": "7", "confiscated": "7", "evidence": "7",
       "ransomed": "8", "ransom": "8",
@@ -399,25 +436,78 @@ export class NibrsMapper {
     return result.code || "";
   }
 
+  // Enhanced property description mapping
+  static mapProperty(description: string | undefined): MappingResult {
+    if (!description) return { code: "", confidence: 0, originalInput: description };
+    
+    const inputLower = description.toLowerCase();
+    
+    // Enhanced property detection
+    if (/vehicle|car|auto|truck|honda|ford|chevrolet/i.test(inputLower)) {
+      return { code: "08", confidence: 0.95, originalInput: description };
+    }
+    if (/money|cash|currency|dollar|fund/i.test(inputLower)) {
+      return { code: "01", confidence: 0.95, originalInput: description };
+    }
+    if (/electronic|computer|laptop|tablet|macbook|ipad/i.test(inputLower)) {
+      return { code: "14", confidence: 0.95, originalInput: description }; // ENHANCED confidence
+    }
+    if (/phone|iphone|smartphone|cellular/i.test(inputLower)) {
+      return { code: "32", confidence: 0.95, originalInput: description }; // ENHANCED confidence
+    }
+    if (/jewelry|ring|necklace|watch|gold|silver|rolex/i.test(inputLower)) {
+      return { code: "02", confidence: 0.95, originalInput: description }; // ENHANCED confidence
+    }
+    if (/firearm|gun|pistol|rifle|shotgun/i.test(inputLower)) {
+      return { code: "11", confidence: 0.95, originalInput: description };
+    }
+    if (/camera|security camera|surveillance/i.test(inputLower)) {
+      return { code: "14", confidence: 0.9, originalInput: description }; // ADDED
+    }
+    if (/door|window|frame|structure|building/i.test(inputLower)) {
+      return { code: "34", confidence: 0.8, originalInput: description }; // ADDED for structural damage
+    }
+    
+    const result = this.findBestMatch(description, NIBRS_PROPERTY_CODES, "property");
+    return result;
+  }
+
   // Extract multiple properties from narrative
   static extractMultipleProperties(narrative: string): Array<{description: string, value?: number}> {
     const properties: Array<{description: string, value?: number}> = [];
     const narrativeLower = narrative.toLowerCase();
     
+    console.log(`[MAPPER] Extracting properties from narrative`);
+    
     // Pattern matching for multiple items
     const itemPatterns = [
-      /(\w+)\s*\(\$([\d,]+)\)/g,
-      /(\$[\d,]+)\s*(?:worth of|value)\s*(\w+)/g,
-      /(\w+)\s*(?:valued at|worth)\s*(\$[\d,]+)/g
+      /(\w+(?:\s+\w+)*)\s*\(\$([\d,]+)\)/g,
+      /(\$[\d,]+)\s*(?:worth of|value of|valued at)\s*(\w+(?:\s+\w+)*)/g,
+      /(\w+(?:\s+\w+)*)\s*(?:valued at|worth)\s*(\$[\d,]+)/g,
+      /stolen\s+(\w+(?:\s+\w+)*)(?:\s+valued at|\s+worth)?\s*(\$[\d,]+)?/g,
+      /took\s+(\w+(?:\s+\w+)*)(?:\s+valued at|\s+worth)?\s*(\$[\d,]+)?/g
     ];
     
     for (const pattern of itemPatterns) {
       let match;
       while ((match = pattern.exec(narrativeLower)) !== null) {
-        const value = parseInt(match[2]?.replace(/[^\d]/g, '') || match[1]?.replace(/[^\d]/g, ''));
-        const description = match[1] || match[2];
-        if (description && !isNaN(value)) {
+        let value: number | undefined;
+        let description: string | undefined;
+        
+        if (match[2] && match[2].includes('$')) {
+          value = parseInt(match[2].replace(/[^\d]/g, ''));
+          description = match[1];
+        } else if (match[1] && match[1].includes('$')) {
+          value = parseInt(match[1].replace(/[^\d]/g, ''));
+          description = match[2];
+        } else {
+          description = match[1];
+          value = match[2] ? parseInt(match[2].replace(/[^\d]/g, '')) : undefined;
+        }
+        
+        if (description && !isNaN(value || 0)) {
           properties.push({ description, value });
+          console.log(`[MAPPER] Extracted property: ${description} = $${value}`);
         }
       }
     }
@@ -428,8 +518,37 @@ export class NibrsMapper {
   // Main mapping function with comprehensive error handling
   static mapDescriptiveToNibrs(extract: DescriptiveExtract): any {
     try {
-      const offense = this.mapOffense(extract.offenseDescription);
-      const location = this.mapLocation(extract.locationDescription, offense.code);
+      console.log("[MAPPER] Starting mapDescriptiveToNibrs with extract:", JSON.stringify(extract, null, 2));
+
+      // Map multiple offenses with better error handling
+      const offenses = (extract.offenses || []).map(offense => {
+        console.log(`[MAPPER] Mapping offense: ${offense.description}`);
+        const mappedOffense = this.mapOffense(offense.description);
+        
+        return {
+          code: mappedOffense.code || "13A", // Fallback to assault if no code
+          description: offense.description,
+          attemptedCompleted: offense.attemptedCompleted || "C",
+          mappingConfidence: mappedOffense.confidence
+        };
+      });
+
+      // Ensure we have at least one offense
+      if (offenses.length === 0) {
+        console.log("[MAPPER] No offenses found, adding default");
+        offenses.push({
+          code: "13A",
+          description: "Default offense",
+          attemptedCompleted: "C",
+          mappingConfidence: 0.1
+        });
+      }
+
+      console.log("[MAPPER] Mapped offenses:", offenses);
+
+      // Use the first offense for location mapping
+      const primaryOffenseCode = offenses[0].code;
+      const location = this.mapLocation(extract.locationDescription, primaryOffenseCode);
       
       const mapped: any = {
         incidentNumber: extract.incidentNumber,
@@ -437,123 +556,124 @@ export class NibrsMapper {
         incidentTime: extract.incidentTime,
         clearedExceptionally: extract.clearedExceptionally,
         exceptionalClearanceDate: extract.exceptionalClearanceDate,
-        offenseCode: offense.code,
-        offenseAttemptedCompleted: extract.offenseAttemptedCompleted,
+        offenses: offenses,
         locationCode: location.code,
         narrative: extract.narrative || "",
         mappingConfidence: {
-          offense: offense.confidence,
+          offenses: offenses.map(o => o.mappingConfidence),
           location: location.confidence,
           originalInputs: {
-            offense: offense.originalInput,
+            offenses: offenses.map(o => o.description),
             location: location.originalInput
           }
         }
       };
 
-      // Remove victim data for victimless crimes
-      if (this.isVictimlessOffense(offense.code)) {
-        delete extract.victim;
-        if (extract.offender) {
-          delete extract.offender.relationshipDescription;
-        }
-      }
+      console.log("[MAPPER] Base mapped structure:", JSON.stringify(mapped, null, 2));
 
       // Map weapon if provided
-      if (extract.weaponDescription) {
-        const weapon = this.mapWeapon(extract.weaponDescription);
-        if (weapon.code) {
-          mapped.weaponCode = weapon.code;
-          mapped.mappingConfidence.weapon = weapon.confidence;
-          mapped.mappingConfidence.originalInputs.weapon = weapon.originalInput;
+      if (extract.weaponDescriptions && Array.isArray(extract.weaponDescriptions)) {
+        const weaponResults = extract.weaponDescriptions
+          .map(weapon => this.mapWeapon(weapon))
+          .filter(weapon => weapon.code);
+        
+        if (weaponResults.length > 0) {
+          mapped.weaponCodes = weaponResults.map(weapon => weapon.code);
+          mapped.mappingConfidence.weapons = weaponResults.map(weapon => weapon.confidence);
+          mapped.mappingConfidence.originalInputs.weapons = weaponResults.map(weapon => weapon.originalInput);
+          console.log("[MAPPER] Mapped weapons:", mapped.weaponCodes);
         }
       }
 
       // Map bias motivation if provided
       if (extract.biasMotivation) {
         mapped.biasMotivationCode = extract.biasMotivation;
+        console.log("[MAPPER] Set bias motivation:", extract.biasMotivation);
       }
 
-      // Map victim data with validation
-      if (extract.victim && !this.isVictimlessOffense(offense.code)) {
-        mapped.victim = { ...extract.victim };
-        if (mapped.victim.sex && !["M", "F", "U"].includes(mapped.victim.sex)) {
-          mapped.victim.sex = "U";
-        }
+      // Check if any offense is victimless
+      const hasVictimlessOffense = offenses.some(offense => 
+        this.isVictimlessOffense(offense.code)
+      );
+
+      console.log("[MAPPER] Has victimless offense:", hasVictimlessOffense);
+
+      // Map victim data with validation (skip for victimless crimes)
+      if (extract.victims && Array.isArray(extract.victims) && !hasVictimlessOffense) {
+        mapped.victims = extract.victims.map(victim => ({
+          ...victim,
+          sex: victim.sex && ["M", "F", "U"].includes(victim.sex) ? victim.sex : "U"
+        }));
+        console.log("[MAPPER] Mapped victims:", mapped.victims);
       }
 
       // Map offender data with validation
-      if (extract.offender) {
-        mapped.offender = { ...extract.offender };
-        
-        // Map relationship (skip for victimless crimes)
-        if (extract.offender.relationshipDescription && !this.isVictimlessOffense(offense.code)) {
-          const relationship = this.mapRelationship(extract.offender.relationshipDescription, extract.narrative);
-          if (relationship) {
-            mapped.offender.relationshipToVictim = relationship;
+      if (extract.offenders && Array.isArray(extract.offenders)) {
+        mapped.offenders = extract.offenders.map(offender => {
+          const result: any = { ...offender };
+          
+          // Map relationship (skip for victimless crimes)
+          if (offender.relationshipDescription && !hasVictimlessOffense) {
+            const relationship = this.mapRelationship(offender.relationshipDescription, extract.narrative);
+            if (relationship) {
+              result.relationshipToVictim = relationship;
+            }
           }
-        }
-        
-        if (mapped.offender.sex && !["M", "F", "U"].includes(mapped.offender.sex)) {
-          mapped.offender.sex = "U";
-        }
+          
+          if (result.sex && !["M", "F", "U"].includes(result.sex)) {
+            result.sex = "U";
+          }
+          
+          return result;
+        });
+        console.log("[MAPPER] Mapped offenders:", mapped.offenders);
       }
 
-      // Handle multiple properties from narrative
-      const multipleProperties = this.extractMultipleProperties(extract.narrative || '');
-      
-      if (multipleProperties.length > 0) {
-        mapped.properties = multipleProperties.map(prop => {
-          const property = this.mapProperty(prop.description);
+      // Map multiple properties from extract
+      if (extract.properties && Array.isArray(extract.properties)) {
+        mapped.properties = extract.properties.map(prop => {
+          const property = this.mapProperty(prop.propertyDescription);
+          const lossType = this.mapLossType(prop.lossDescription);
+          
           return {
             descriptionCode: property.code,
-            value: prop.value,
+            description: prop.propertyDescription,
+            lossType: lossType,
+            value: prop.value ? Math.max(0, Number(prop.value)) : undefined,
             mappingConfidence: property.confidence
           };
         });
-      }
-      // Map single property data with validation
-      else if (extract.property) {
-        const isEvidence = /seized|confiscated|evidence/i.test(extract.property.lossDescription || '');
+        console.log("[MAPPER] Mapped properties from extract:", mapped.properties);
+      } else {
+        // Handle multiple properties from narrative as fallback
+        const multipleProperties = this.extractMultipleProperties(extract.narrative || '');
         
-        if (isEvidence) {
-          mapped.evidence = {
-            description: extract.property.propertyDescription,
-            value: extract.property.value ? Math.max(0, Number(extract.property.value)) : undefined
-          };
-        } else {
-          mapped.property = {
-            value: extract.property.value ? Math.max(0, Number(extract.property.value)) : undefined
-          };
-
-          if (extract.property.lossDescription) {
-            const lossType = this.mapLossType(extract.property.lossDescription);
-            if (lossType) {
-              mapped.property.lossType = lossType;
-            }
-          }
-
-          if (extract.property.propertyDescription) {
-            const property = this.mapProperty(extract.property.propertyDescription);
-            if (property.code) {
-              mapped.property.descriptionCode = property.code;
-              mapped.mappingConfidence.property = property.confidence;
-              mapped.mappingConfidence.originalInputs.property = property.originalInput;
-            }
-          }
+        if (multipleProperties.length > 0) {
+          mapped.properties = multipleProperties.map(prop => {
+            const property = this.mapProperty(prop.description);
+            return {
+              descriptionCode: property.code,
+              description: prop.description,
+              value: prop.value,
+              mappingConfidence: property.confidence
+            };
+          });
+          console.log("[MAPPER] Mapped properties from narrative:", mapped.properties);
         }
       }
 
       // Add missing required fields with defaults and validate
-      return this.addMissingRequiredFields(mapped, extract.narrative);
+      const result = this.addMissingRequiredFields(mapped, extract.narrative);
+      console.log("[MAPPER] Final mapped result:", JSON.stringify(result, null, 2));
+      
+      return result;
 
     } catch (error) {
-      console.error("Error in mapDescriptiveToNibrs:", error);
+      console.error("[MAPPER] Error in mapDescriptiveToNibrs:", error);
       return {
         incidentNumber: `INC-${Date.now()}`,
         incidentDate: new Date().toISOString().split('T')[0],
-        offenseCode: "13A",
-        offenseAttemptedCompleted: "C",
+        offenses: [{ code: "13A", description: "Error fallback offense", attemptedCompleted: "C", mappingConfidence: 0.1 }],
         locationCode: "13",
         clearedExceptionally: "N",
         narrative: extract.narrative || "Error processing report",
@@ -570,27 +690,41 @@ export class NibrsMapper {
     const errors: string[] = [];
     const warnings: string[] = [];
     
+    console.log("[MAPPER] Starting validateAndMapExtract");
+    
     const mapped = this.mapDescriptiveToNibrs(extract);
     
     if (!mapped.incidentDate || isNaN(Date.parse(mapped.incidentDate))) {
       errors.push("Invalid incident date");
     }
     
-    if (!mapped.offenseCode || !Object.values(NIBRS_OFFENSE_CODES).includes(mapped.offenseCode)) {
-      errors.push("Invalid offense code");
+    if (!mapped.offenses || mapped.offenses.length === 0) {
+      errors.push("No valid offenses found");
+    } else {
+      for (const offense of mapped.offenses) {
+        if (!offense.code || !Object.values(NIBRS_OFFENSE_CODES).includes(offense.code)) {
+          errors.push(`Invalid offense code: ${offense.code}`);
+        }
+      }
     }
     
     if (!mapped.locationCode || !Object.values(NIBRS_LOCATION_CODES).includes(mapped.locationCode)) {
       errors.push("Invalid location code");
     }
     
-    if (mapped.mappingConfidence.offense < 0.5) {
-      warnings.push(`Low confidence in offense mapping: ${mapped.offenseCode}`);
+    if (mapped.mappingConfidence.offenses) {
+      mapped.mappingConfidence.offenses.forEach((confidence: number, index: number) => {
+        if (confidence < 0.5) {
+          warnings.push(`Low confidence in offense mapping: ${mapped.offenses[index].code} (confidence: ${confidence})`);
+        }
+      });
     }
     
     if (mapped.mappingConfidence.location < 0.5) {
-      warnings.push(`Low confidence in location mapping: ${mapped.locationCode}`);
+      warnings.push(`Low confidence in location mapping: ${mapped.locationCode} (confidence: ${mapped.mappingConfidence.location})`);
     }
+    
+    console.log("[MAPPER] Validation results:", { errors, warnings });
     
     return { data: mapped, errors, warnings };
   }
