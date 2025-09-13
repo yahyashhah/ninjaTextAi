@@ -86,7 +86,7 @@ export const NIBRS_TEMPLATES: Record<string, {
     requiredVictim: [],
     requiredOffender: ["sex", "race"],
     requiredProperty: false,
-    requiredEvidence: true,
+    requiredEvidence: false,
     isVictimless: true
   },
   // Weapon violation
@@ -105,6 +105,13 @@ export const NIBRS_TEMPLATES: Record<string, {
     requiredEvidence: false,
     isVictimless: true
   },
+  "64A": {
+    requiredVictim: ["type", "injury"],
+    requiredOffender: [],
+    requiredProperty: true, // For vehicle damage
+    requiredEvidence: false,
+    isVictimless: false // This is CRITICAL - traffic collisions are NOT victimless
+  },
   // Default template
   "default": {
     requiredVictim: [],
@@ -118,35 +125,48 @@ export const NIBRS_TEMPLATES: Record<string, {
 export function validateWithTemplate(nibrs: any): string[] {
   const errors: string[] = [];
   
-  const template = NIBRS_TEMPLATES[nibrs.offenseCode] || NIBRS_TEMPLATES.default;
-  const isVictimless = template.isVictimless || NibrsMapper.isVictimlessOffense(nibrs.offenseCode);
+  // Use the first offense for template validation
+  const primaryOffenseCode = nibrs.offenses && nibrs.offenses.length > 0 
+    ? nibrs.offenses[0].code 
+    : undefined;
   
-  if (!isVictimless) {
-    if (template.requiredVictim.length && nibrs.victim) {
-      template.requiredVictim.forEach(f => {
-        if (nibrs.victim[f] === undefined || nibrs.victim[f] === null || nibrs.victim[f] === "") {
-          errors.push(`Victim ${f} is required for offense ${nibrs.offenseCode}.`);
-        }
-      });
+  const template = primaryOffenseCode ? 
+    NIBRS_TEMPLATES[primaryOffenseCode] || NIBRS_TEMPLATES.default : 
+    NIBRS_TEMPLATES.default;
+  
+  // Check if any offense is victimless
+  const hasVictimlessOffense = nibrs.offenses && nibrs.offenses.some((offense: any) => 
+    NibrsMapper.isVictimlessOffense(offense.code)
+  );
+  
+  if (!hasVictimlessOffense) {
+    if (template.requiredVictim.length && nibrs.victims) {
+      for (const victim of nibrs.victims) {
+        template.requiredVictim.forEach(f => {
+          if (victim[f] === undefined || victim[f] === null || victim[f] === "") {
+            errors.push(`Victim ${f} is required for offense ${primaryOffenseCode}.`);
+          }
+        });
+      }
     }
 
-    if (template.requiredOffender.length && nibrs.offender) {
-      template.requiredOffender.forEach(f => {
-        if (nibrs.offender[f] === undefined || nibrs.offender[f] === null || nibrs.offender[f] === "") {
-          errors.push(`Offender ${f} is required for offense ${nibrs.offenseCode}.`);
-        }
-      });
+    if (template.requiredOffender.length && nibrs.offenders) {
+      for (const offender of nibrs.offenders) {
+        template.requiredOffender.forEach(f => {
+          if (offender[f] === undefined || offender[f] === null || offender[f] === "") {
+            errors.push(`Offender ${f} is required for offense ${primaryOffenseCode}.`);
+          }
+        });
+      }
     }
   }
 
   // Property checks
   if (template.requiredProperty) {
-    const hasProperty = nibrs.property && 
-                       (nibrs.property.value > 0 || nibrs.property.descriptionCode);
-    const hasProperties = nibrs.properties && nibrs.properties.length > 0;
+    const hasProperty = nibrs.properties && nibrs.properties.length > 0;
     const hasEvidence = nibrs.evidence;
     
-    if (!hasProperty && !hasProperties && !hasEvidence) {
+    if (!hasProperty && !hasEvidence) {
       errors.push("Property information is required for this offense.");
     }
   }

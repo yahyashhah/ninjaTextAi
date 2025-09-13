@@ -43,6 +43,8 @@ interface CorrectionData {
   nibrsData: any;
   suggestions?: any;
   confidence?: any;
+  correctionContext?: any;
+  warnings?: string[];
 }
 
 const BaseReport = ({
@@ -287,12 +289,14 @@ const BaseReport = ({
       
       if (error.response?.status === 400 && error.response.data?.errors) {
         // Handle validation errors with mapping issues
-        const { errors, nibrs: nibrsData, mappingConfidence } = error.response.data;
+        const { errors, nibrs: nibrsData, mappingConfidence, correctionContext, warnings } = error.response.data;
         
         setCorrectionData({
           errors,
           nibrsData,
-          confidence: mappingConfidence
+          confidence: mappingConfidence,
+          correctionContext,
+          warnings
         });
         
         toast({
@@ -335,8 +339,10 @@ const BaseReport = ({
       {correctionData && (
         <CorrectionUI
           errors={correctionData.errors}
+          warnings={correctionData.warnings || []}
           nibrsData={correctionData.nibrsData}
           confidence={correctionData.confidence}
+          correctionContext={correctionData.correctionContext}
           onCorrect={handleCorrectionSubmit}
           onCancel={() => setCorrectionData(null)}
         />
