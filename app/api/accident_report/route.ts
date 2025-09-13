@@ -52,6 +52,18 @@ function tryParseJSON(raw: string) {
 
   throw new Error("Model output is not valid JSON.");
 }
+function getSuggestedFixForTemplateError(error: string): string {
+  if (error.includes("Evidence information is required")) {
+    return "Add evidence details like 'field test kit' or 'evidence tag number' to the narrative";
+  }
+  if (error.includes("Property information is required")) {
+    return "Add property descriptions and values for damaged vehicles or stolen items";
+  }
+  if (error.includes("is required for offense")) {
+    return "Ensure all required fields are provided in the narrative";
+  }
+  return "Review the narrative for missing required information";
+}
 
 export async function POST(req: Request) {
   let userId: string | null = null;
@@ -225,41 +237,46 @@ IMPORTANT:
     console.log("Warnings generated:", warnings);
 
     // Run your existing validator (zod + logical checks)
-    const { ok, data, errors } = validateNibrsPayload(mapped);
-    
-    console.log("Validation result:", { ok, errors, warnings });
+    // Run your existing validator (zod + logical checks)
+const { ok, data, errors, warnings: validationWarnings, correctionContext } = validateNibrsPayload(mapped);
 
-    if (!ok && errors.length > 0) {
-      return NextResponse.json({ 
-        errors, 
-        warnings,
-        nibrs: mapped,
-        mappingConfidence: mapped.mappingConfidence 
-      }, { status: 400 });
-    }
+console.log("Validation result:", { ok, errors, warnings: validationWarnings });
 
-    // Also run template-based validation (business rules)
-    const templateErrors = validateWithTemplate(mapped);
-    if (templateErrors.length > 0) {
-      return NextResponse.json({ 
-        errors: templateErrors, 
-        warnings,
-        nibrs: mapped,
-        mappingConfidence: mapped.mappingConfidence,
-        correctionContext: mapped.correctionContext,
-      }, { status: 400 });
-    }
+// Combine warnings from mapping and validation
+const allWarnings = [...warnings, ...validationWarnings];
 
-    if (!ok && errors.length > 0) {
-  console.log("Validation failed with errors:", errors);
-  console.log("Correction context:", mapped.correctionContext);
-  
+if (!ok && errors.length > 0) {
   return NextResponse.json({ 
     errors, 
-    warnings,
+    warnings: allWarnings,
     nibrs: mapped,
     mappingConfidence: mapped.mappingConfidence,
-    correctionContext: mapped.correctionContext,
+    correctionContext: correctionContext, // USE THE correctionContext FROM VALIDATION
+  }, { status: 400 });
+}
+
+// Also run template-based validation (business rules)
+const templateErrors = validateWithTemplate(mapped);
+if (templateErrors.length > 0) {
+  // Create proper correction context for template errors
+  const templateCorrectionContext = {
+    missingVictims: correctionContext?.missingVictims || [],
+    ambiguousProperties: correctionContext?.ambiguousProperties || [],
+    requiredFields: correctionContext?.requiredFields || [],
+    multiOffenseIssues: correctionContext?.multiOffenseIssues || [],
+    templateErrors: templateErrors.map(error => ({
+      message: error,
+      offenseCode: mapped.offenses?.[0]?.code,
+      suggestedFix: getSuggestedFixForTemplateError(error)
+    }))
+  };
+
+  return NextResponse.json({ 
+    errors: templateErrors, 
+    warnings: allWarnings,
+    nibrs: mapped,
+    mappingConfidence: mapped.mappingConfidence,
+    correctionContext: templateCorrectionContext,
   }, { status: 400 });
 }
 
