@@ -86,7 +86,7 @@ export const NIBRS_TEMPLATES: Record<string, {
     requiredVictim: [],
     requiredOffender: ["sex", "race"],
     requiredProperty: false,
-    requiredEvidence: true,
+    requiredEvidence: false,
     isVictimless: true
   },
   // Weapon violation
@@ -104,6 +104,13 @@ export const NIBRS_TEMPLATES: Record<string, {
     requiredProperty: false,
     requiredEvidence: false,
     isVictimless: true
+  },
+  "64A": {
+    requiredVictim: ["type", "injury"],
+    requiredOffender: [],
+    requiredProperty: true, // For vehicle damage
+    requiredEvidence: false,
+    isVictimless: false // This is CRITICAL - traffic collisions are NOT victimless
   },
   // Default template
   "default": {

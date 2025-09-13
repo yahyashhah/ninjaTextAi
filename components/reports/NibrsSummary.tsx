@@ -98,6 +98,31 @@ const NibrsSummary = ({ nibrs, xmlData }: NIBRSSummaryProps) => {
         </div>
       )}
 
+      {/* Multiple Arrestees Section */}
+{nibrs.arrestees && nibrs.arrestees.length > 0 && (
+  <div className="mb-4 p-3 bg-yellow-50 rounded-lg">
+    <h4 className="font-medium text-yellow-800 mb-2">Arrestees ({nibrs.arrestees.length})</h4>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      {nibrs.arrestees.map((arrestee: any, index: number) => (
+        <div key={index} className="text-sm bg-white p-2 rounded border">
+          <div><span className="font-medium">Arrest #:</span> {arrestee.sequenceNumber}</div>
+          <div><span className="font-medium">Date:</span> {arrestee.arrestDate}</div>
+          <div><span className="font-medium">Type:</span> {
+            arrestee.arrestType === "O" ? "On-view" :
+            arrestee.arrestType === "S" ? "Summoned/Cited" :
+            arrestee.arrestType === "T" ? "Taken into Custody" :
+            arrestee.arrestType
+          }</div>
+          {arrestee.age && <div><span className="font-medium">Age:</span> {arrestee.age}</div>}
+          {arrestee.sex && <div><span className="font-medium">Sex:</span> {arrestee.sex}</div>}
+          {arrestee.race && <div><span className="font-medium">Race:</span> {arrestee.race}</div>}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+
+
       {/* Multiple Properties Section - ENHANCED */}
       {nibrs.properties && nibrs.properties.length > 0 && (
         <div className="mb-4 p-3 bg-purple-50 rounded-lg">

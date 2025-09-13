@@ -9,9 +9,9 @@ export function buildNibrsXML(data: NibrsExtract): string {
     s ? s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
 
   // Check if any offense is victimless
-  const hasVictimlessOffense = data.offenses.some(offense => 
-    NibrsMapper.isVictimlessOffense(offense.code)
-  );
+  const hasVictimlessOffense = data.offenses
+    .filter(offense => offense.code !== undefined)
+    .some(offense => NibrsMapper.isVictimlessOffense(offense.code!));
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <NIBRSReport xmlns="http://fbi.gov/cjis/nibrs/4.0">
@@ -63,8 +63,24 @@ export function buildNibrsXML(data: NibrsExtract): string {
       ${property.descriptionCode ? `<DescriptionCode>${esc(property.descriptionCode)}</DescriptionCode>` : ""}
       ${property.description ? `<Description>${esc(property.description)}</Description>` : ""}
       ${typeof property.value === "number" ? `<Value>${property.value}</Value>` : ""}
-      ${property.mappingConfidence !== undefined ? `<MappingConfidence>${property.mappingConfidence}</MappingConfidence>` : ""}
+      <!-- MappingConfidence is not defined on the property object, so this line is removed -->
     </Property>`).join('') : ""}
+
+    <!-- Arrestee Segment -->
+    ${data.arrestees && data.arrestees.length > 0 ? 
+      data.arrestees.map(arrestee => `
+    <Arrestee>
+      <SequenceNumber>${arrestee.sequenceNumber}</SequenceNumber>
+      <ArrestDate>${esc(arrestee.arrestDate)}</ArrestDate>
+      ${arrestee.arrestTime ? `<ArrestTime>${esc(arrestee.arrestTime)}</ArrestTime>` : ""}
+      <ArrestType>${esc(arrestee.arrestType)}</ArrestType>
+      ${arrestee.age !== undefined ? `<Age>${arrestee.age}</Age>` : ""}
+      ${arrestee.sex ? `<Sex>${esc(arrestee.sex)}</Sex>` : ""}
+      ${arrestee.race ? `<Race>${esc(arrestee.race)}</Race>` : ""}
+      ${arrestee.ethnicity ? `<Ethnicity>${esc(arrestee.ethnicity)}</Ethnicity>` : ""}
+      ${arrestee.residentCode ? `<ResidentCode>${esc(arrestee.residentCode)}</ResidentCode>` : ""}
+      ${arrestee.clearanceCode ? `<ClearanceCode>${esc(arrestee.clearanceCode)}</ClearanceCode>` : ""}
+    </Arrestee>`).join('') : ""}
 
     <Narrative>${esc(data.narrative)}</Narrative>
   </Incident>

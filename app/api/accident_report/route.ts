@@ -245,18 +245,23 @@ IMPORTANT:
         errors: templateErrors, 
         warnings,
         nibrs: mapped,
-        mappingConfidence: mapped.mappingConfidence 
+        mappingConfidence: mapped.mappingConfidence,
+        correctionContext: mapped.correctionContext,
       }, { status: 400 });
     }
 
-    if (!ok || !data) {
-      return NextResponse.json({ 
-        errors: errors || ["Validation failed"], 
-        warnings,
-        nibrs: mapped,
-        mappingConfidence: mapped.mappingConfidence 
-      }, { status: 400 });
-    }
+    if (!ok && errors.length > 0) {
+  console.log("Validation failed with errors:", errors);
+  console.log("Correction context:", mapped.correctionContext);
+  
+  return NextResponse.json({ 
+    errors, 
+    warnings,
+    nibrs: mapped,
+    mappingConfidence: mapped.mappingConfidence,
+    correctionContext: mapped.correctionContext,
+  }, { status: 400 });
+}
 
     // Build XML if everything is good
     const xml = buildNibrsXML(data);
