@@ -122,6 +122,7 @@ export const NIBRS_TEMPLATES: Record<string, {
   }
 };
 
+// In your templates.ts
 export function validateWithTemplate(nibrs: any): string[] {
   const errors: string[] = [];
   
@@ -161,19 +162,33 @@ export function validateWithTemplate(nibrs: any): string[] {
     }
   }
 
-  // Property checks
+  // Property checks - MODIFIED TO BE MORE FLEXIBLE
   if (template.requiredProperty) {
     const hasProperty = nibrs.properties && nibrs.properties.length > 0;
-    const hasEvidence = nibrs.evidence;
+    const hasEvidence = nibrs.properties && nibrs.properties.some((prop: any) => prop.seized);
     
+    // Only require property if no evidence is present
     if (!hasProperty && !hasEvidence) {
-      errors.push("Property information is required for this offense.");
+      errors.push("Property or evidence information is required for this offense.");
     }
   }
 
-  // Evidence checks
-  if (template.requiredEvidence && !nibrs.evidence) {
-    errors.push("Evidence information is required for this offense.");
+  // Evidence checks - MODIFIED TO BE MORE FLEXIBLE
+  if (template.requiredEvidence) {
+    const hasEvidence = nibrs.properties && nibrs.properties.some((prop: any) => prop.seized);
+    
+    if (!hasEvidence) {
+      // Check if the narrative mentions evidence
+      const narrativeLower = (nibrs.narrative || "").toLowerCase();
+      const hasEvidenceMention = /evidence|seized|confiscated|secured|logged/.test(narrativeLower);
+      
+      if (!hasEvidenceMention) {
+        errors.push("Evidence information is required for this offense.");
+      } else {
+        // If narrative mentions evidence but properties don't show it, this is a warning not an error
+        console.warn("Narrative mentions evidence but properties are not marked as seized");
+      }
+    }
   }
 
   return errors;

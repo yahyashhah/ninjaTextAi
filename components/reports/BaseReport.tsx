@@ -19,6 +19,7 @@ import RecordingControls from "./RecordingControls";
 import PromptInput from "./PromptInput";
 import CorrectionUI from "./CorrectionUI";
 
+
 export type Template = {
   id: string;
   templateName: string;
@@ -39,12 +40,14 @@ interface BaseReportProps {
 }
 
 interface CorrectionData {
-  errors: string[];
+  error: string;
   nibrsData: any;
-  suggestions?: any;
+  suggestions?: string[];
   confidence?: any;
   correctionContext?: any;
   warnings?: string[];
+  missingFields?: string[];
+  requiredLevel?: string;
 }
 
 const BaseReport = ({
@@ -287,31 +290,42 @@ const BaseReport = ({
     } catch (error: any) {
       console.error("Submission error:", error);
       
-      if (error.response?.status === 400 && error.response.data?.errors) {
-        // Handle validation errors with mapping issues
-        const { errors, nibrs: nibrsData, mappingConfidence, correctionContext, warnings } = error.response.data;
-        
-        setCorrectionData({
-          errors,
-          nibrsData,
-          confidence: mappingConfidence,
-          correctionContext,
-          warnings
-        });
-        
-        toast({
-          title: "Mapping Assistance Needed",
-          description: "Please review the auto-mapped codes",
-          variant: "default",
-          duration: 5000,
-        });
-      } else {
-        toast({
-          title: "Submission Error",
-          description: error.response?.data?.message || error.message || "Failed to submit report",
-          variant: "destructive",
-        });
-      }
+      if (error.response?.status === 400 && error.response.data) {
+    const {
+      error: apiError,
+      nibrs: nibrsData,
+      mappingConfidence,
+      correctionContext,
+      warnings,
+      missingFields,
+      requiredLevel,
+      suggestions
+    } = error.response.data;
+
+    setCorrectionData({
+      error: apiError,
+      nibrsData: nibrsData || {},
+      confidence: mappingConfidence || {},
+      correctionContext: correctionContext || {},
+      warnings: warnings || [],
+      missingFields: missingFields || [],
+      requiredLevel: requiredLevel || "",
+      suggestions: suggestions || []
+    });
+
+    toast({
+      title: "Correction Needed",
+      description: "Please review the report details",
+      variant: "default",
+      duration: 5000,
+    });
+  } else {
+    toast({
+      title: "Submission Error",
+      description: error.response?.data?.message || error.message || "Failed to submit report",
+      variant: "destructive",
+    });
+  }
     } finally {
       setIsLoading(false);
     }
@@ -337,16 +351,19 @@ const BaseReport = ({
       
       {/* Correction Modal */}
       {correctionData && (
-        <CorrectionUI
-          errors={correctionData.errors}
-          warnings={correctionData.warnings || []}
-          nibrsData={correctionData.nibrsData}
-          confidence={correctionData.confidence}
-          correctionContext={correctionData.correctionContext}
-          onCorrect={handleCorrectionSubmit}
-          onCancel={() => setCorrectionData(null)}
-        />
-      )}
+  <CorrectionUI
+    error={correctionData.error}
+    missingFields={correctionData.missingFields || []}
+    requiredLevel={correctionData.requiredLevel || ""}
+    suggestions={correctionData.suggestions || []}
+    warnings={correctionData.warnings || []}
+    nibrsData={correctionData.nibrsData}
+    confidence={correctionData.confidence}
+    correctionContext={correctionData.correctionContext}
+    onCorrect={handleCorrectionSubmit}
+    onCancel={() => setCorrectionData(null)}
+  />
+)}
       
       {/* Header Section */}
       <Header

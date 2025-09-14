@@ -1,88 +1,72 @@
 // xml.ts - Fixed XML builder
-import { NibrsExtract } from "./schema";
+import { NibrsExtract, NibrsSegments } from "./schema";
 import { NibrsMapper } from "./mapper";
 import { NIBRS_TEMPLATES } from "./templates";
 
 // xml.ts - Enhanced XML builder
-export function buildNibrsXML(data: NibrsExtract): string {
-  const esc = (s?: string) =>
-    s ? s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
-
-  // Check if any offense is victimless
-  const hasVictimlessOffense = data.offenses
-    .filter(offense => offense.code !== undefined)
-    .some(offense => NibrsMapper.isVictimlessOffense(offense.code!));
+export function buildNIBRSXML(data: NibrsSegments): string {
+  const esc = (s?: string) => 
+    s ? s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;") : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<NIBRSReport xmlns="http://fbi.gov/cjis/nibrs/4.0">
-  <Incident>
-    <IncidentNumber>${esc(data.incidentNumber)}</IncidentNumber>
-    <IncidentDate>${esc(data.incidentDate)}</IncidentDate>
-    ${data.incidentTime ? `<IncidentTime>${esc(data.incidentTime)}</IncidentTime>` : ""}
-    <ClearedExceptionally>${esc(data.clearedExceptionally)}</ClearedExceptionally>
-    ${data.clearedBy ? `<ClearedBy>${esc(data.clearedBy)}</ClearedBy>` : ""}
-    ${data.exceptionalClearanceDate ? `<ExceptionalClearanceDate>${esc(data.exceptionalClearanceDate)}</ExceptionalClearanceDate>` : ""}
+<nibrs:NIBRSReport xmlns:nibrs="http://fbi.gov/cjis/nibrs/4.0" xmlns:j="http://fbi.gov/cjis/jxdm/3.0.3">
+  <nibrs:Incident>
+    <!-- Administrative Segment -->
+    <nibrs:IncidentNumber>${esc(data.administrative.incidentNumber)}</nibrs:IncidentNumber>
+    <nibrs:IncidentDate>${esc(data.administrative.incidentDate)}</nibrs:IncidentDate>
+    ${data.administrative.incidentTime ? `<nibrs:IncidentTime>${esc(data.administrative.incidentTime)}</nibrs:IncidentTime>` : ''}
+    <nibrs:ClearedExceptionally>${esc(data.administrative.clearedExceptionally)}</nibrs:ClearedExceptionally>
+    ${data.administrative.clearedBy ? `<nibrs:ClearedBy>${esc(data.administrative.clearedBy)}</nibrs:ClearedBy>` : ''}
 
-    <!-- Multiple Offenses -->
+    <!-- Offense Segments -->
     ${data.offenses.map(offense => `
-    <Offense>
-      <OffenseCode>${esc(offense.code)}</OffenseCode>
-      <AttemptedCompleted>${esc(offense.attemptedCompleted)}</AttemptedCompleted>
-      <LocationCode>${esc(data.locationCode)}</LocationCode>
-      ${data.weaponCodes && data.weaponCodes.length > 0 ? 
-        data.weaponCodes.map(weapon => `<WeaponCode>${esc(weapon)}</WeaponCode>`).join('') : ""}
-      ${data.biasMotivationCode ? `<BiasMotivation>${esc(data.biasMotivationCode)}</BiasMotivation>` : ""}
-    </Offense>`).join('')}
+    <nibrs:Offense>
+      <nibrs:OffenseCode>${esc(offense.code)}</nibrs:OffenseCode>
+      <nibrs:AttemptedCompleted>${esc(offense.attemptedCompleted)}</nibrs:AttemptedCompleted>
+      <nibrs:OffenseSequenceNumber>${offense.sequenceNumber}</nibrs:OffenseSequenceNumber>
+    </nibrs:Offense>`).join('')}
 
-    ${!hasVictimlessOffense && data.victims && data.victims.length > 0 ? 
-      data.victims.map(victim => `
-    <Victim>
-      ${victim.type ? `<VictimType>${esc(victim.type)}</VictimType>` : ""}
-      ${victim.age !== undefined ? `<Age>${victim.age}</Age>` : ""}
-      ${victim.sex ? `<Sex>${esc(victim.sex)}</Sex>` : ""}
-      ${victim.race ? `<Race>${esc(victim.race)}</Race>` : ""}
-      ${victim.ethnicity ? `<Ethnicity>${esc(victim.ethnicity)}</Ethnicity>` : ""}
-      ${victim.injury ? `<Injury>${esc(victim.injury)}</Injury>` : ""}
-    </Victim>`).join('') : ""}
+    <!-- Property Segments -->
+    ${data.properties ? data.properties.map(property => `
+    <nibrs:Property>
+      <nibrs:PropertySequenceNumber>${property.sequenceNumber}</nibrs:PropertySequenceNumber>
+      <nibrs:PropertyDescriptionCode>${esc(property.descriptionCode)}</nibrs:PropertyDescriptionCode>
+      <nibrs:PropertyLossCode>${esc(property.lossType)}</nibrs:PropertyLossCode>
+      ${property.value ? `<nibrs:PropertyValue>${property.value}</nibrs:PropertyValue>` : ''}
+      ${property.description ? `<nibrs:PropertyDescriptionText>${esc(property.description)}</nibrs:PropertyDescriptionText>` : ''}
+      ${property.seized ? `<nibrs:PropertySeizedCode>Y</nibrs:PropertySeizedCode>` : ''}
+      ${property.drugMeasurement ? `<nibrs:DrugMeasurementCode>${esc(property.drugMeasurement)}</nibrs:DrugMeasurementCode>` : ''}
+      ${property.drugQuantity ? `<nibrs:DrugQuantity>${property.drugQuantity}</nibrs:DrugQuantity>` : ''}
+    </nibrs:Property>`).join('') : ''}
 
-    ${data.offenders && data.offenders.length > 0 ? 
-      data.offenders.map(offender => `
-    <Offender>
-      ${offender.age !== undefined ? `<Age>${offender.age}</Age>` : ""}
-      ${offender.sex ? `<Sex>${esc(offender.sex)}</Sex>` : ""}
-      ${offender.race ? `<Race>${esc(offender.race)}</Race>` : ""}
-      ${offender.ethnicity ? `<Ethnicity>${esc(offender.ethnicity)}</Ethnicity>` : ""}
-      ${!hasVictimlessOffense && offender.relationshipToVictim ? `<RelationshipToVictim>${esc(offender.relationshipToVictim)}</RelationshipToVictim>` : ""}
-    </Offender>`).join('') : ""}
+    <!-- Victim Segments -->
+    ${data.victims ? data.victims.map(victim => `
+    <nibrs:Victim>
+      <nibrs:VictimSequenceNumber>${victim.sequenceNumber}</nibrs:VictimSequenceNumber>
+      <nibrs:VictimTypeCode>${esc(victim.type)}</nibrs:VictimTypeCode>
+      ${victim.age ? `<nibrs:VictimAge>${victim.age}</nibrs:VictimAge>` : ''}
+      ${victim.sex ? `<nibrs:VictimSexCode>${esc(victim.sex)}</nibrs:VictimSexCode>` : ''}
+      ${victim.race ? `<nibrs:VictimRaceCode>${esc(victim.race)}</nibrs:VictimRaceCode>` : ''}
+      ${victim.ethnicity ? `<nibrs:VictimEthnicityCode>${esc(victim.ethnicity)}</nibrs:VictimEthnicityCode>` : ''}
+      ${victim.injury ? `<nibrs:VictimInjuryCode>${esc(victim.injury)}</nibrs:VictimInjuryCode>` : ''}
+    </nibrs:Victim>`).join('') : ''}
 
-    <!-- Multiple Properties with Enhanced Details -->
-    ${data.properties && data.properties.length > 0 ? 
-      data.properties.map(property => `
-    <Property>
-      ${property.lossType ? `<LossType>${esc(property.lossType)}</LossType>` : ""}
-      ${property.descriptionCode ? `<DescriptionCode>${esc(property.descriptionCode)}</DescriptionCode>` : ""}
-      ${property.description ? `<Description>${esc(property.description)}</Description>` : ""}
-      ${typeof property.value === "number" ? `<Value>${property.value}</Value>` : ""}
-      <!-- MappingConfidence is not defined on the property object, so this line is removed -->
-    </Property>`).join('') : ""}
+    <!-- Arrestee Segments -->
+    ${data.arrestees ? data.arrestees.map(arrestee => `
+    <nibrs:Arrestee>
+      <nibrs:ArresteeSequenceNumber>${arrestee.sequenceNumber}</nibrs:ArresteeSequenceNumber>
+      <nibrs:ArrestDate>${esc(arrestee.arrestDate)}</nibrs:ArrestDate>
+      ${arrestee.arrestTime ? `<nibrs:ArrestTime>${esc(arrestee.arrestTime)}</nibrs:ArrestTime>` : ''}
+      <nibrs:ArrestTypeCode>${esc(arrestee.arrestType)}</nibrs:ArrestTypeCode>
+      ${arrestee.age ? `<nibrs:ArresteeAge>${arrestee.age}</nibrs:ArresteeAge>` : ''}
+      ${arrestee.sex ? `<nibrs:ArresteeSexCode>${esc(arrestee.sex)}</nibrs:ArresteeSexCode>` : ''}
+      ${arrestee.race ? `<nibrs:ArresteeRaceCode>${esc(arrestee.race)}</nibrs:ArresteeRaceCode>` : ''}
+      ${arrestee.ethnicity ? `<nibrs:ArresteeEthnicityCode>${esc(arrestee.ethnicity)}</nibrs:ArresteeEthnicityCode>` : ''}
+      ${arrestee.offenseCodes ? arrestee.offenseCodes.map(code => `
+        <nibrs:ArresteeOffenseCode>${esc(code)}</nibrs:ArresteeOffenseCode>`).join('') : ''}
+    </nibrs:Arrestee>`).join('') : ''}
 
-    <!-- Arrestee Segment -->
-    ${data.arrestees && data.arrestees.length > 0 ? 
-      data.arrestees.map(arrestee => `
-    <Arrestee>
-      <SequenceNumber>${arrestee.sequenceNumber}</SequenceNumber>
-      <ArrestDate>${esc(arrestee.arrestDate)}</ArrestDate>
-      ${arrestee.arrestTime ? `<ArrestTime>${esc(arrestee.arrestTime)}</ArrestTime>` : ""}
-      <ArrestType>${esc(arrestee.arrestType)}</ArrestType>
-      ${arrestee.age !== undefined ? `<Age>${arrestee.age}</Age>` : ""}
-      ${arrestee.sex ? `<Sex>${esc(arrestee.sex)}</Sex>` : ""}
-      ${arrestee.race ? `<Race>${esc(arrestee.race)}</Race>` : ""}
-      ${arrestee.ethnicity ? `<Ethnicity>${esc(arrestee.ethnicity)}</Ethnicity>` : ""}
-      ${arrestee.residentCode ? `<ResidentCode>${esc(arrestee.residentCode)}</ResidentCode>` : ""}
-      ${arrestee.clearanceCode ? `<ClearanceCode>${esc(arrestee.clearanceCode)}</ClearanceCode>` : ""}
-    </Arrestee>`).join('') : ""}
-
-    <Narrative>${esc(data.narrative)}</Narrative>
-  </Incident>
-</NIBRSReport>`;
+    <nibrs:Narrative>${esc(data.narrative)}</nibrs:Narrative>
+  </nibrs:Incident>
+</nibrs:NIBRSReport>`;
 }
