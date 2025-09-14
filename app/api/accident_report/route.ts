@@ -1,4 +1,4 @@
-// route.ts - Updated with comprehensive logging
+// route.ts - COMPLETELY UPDATED with professional NIBRS validation and standardized error handling
 import { checkApiLimit, increaseAPiLimit } from "@/lib/api-limits";
 import { saveHistoryReport } from "@/lib/history-reports";
 import { checkSubscription } from "@/lib/subscription";
@@ -7,19 +7,13 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import OpenAI from "openai/index.mjs";
 
-import {
-  NIBRS_LOCATION_CODES,
-  NIBRS_OFFENSE_CODES,
-  NIBRS_PROPERTY_CODES,
-  NIBRS_RELATIONSHIP_CODES,
-  NIBRS_WEAPON_CODES
-} from "@/lib/nibrs/codes";
-
-import { validateNibrsPayload } from "@/lib/nibrs/Validator";
+import { validateDescriptiveNibrs, validateNibrsPayload, validateProfessionalNibrs } from "@/lib/nibrs/Validator";
 import { validateWithTemplate } from "@/lib/nibrs/templates";
-import { NibrsExtract } from "@/lib/nibrs/schema";
-import { buildNibrsXML } from "@/lib/nibrs/xml";
+import { NibrsSegments } from "@/lib/nibrs/schema";
+import { buildNIBRSXML } from "@/lib/nibrs/xml";
 import { NibrsMapper } from "@/lib/nibrs/mapper";
+import { NIBRSErrorBuilder } from "@/lib/nibrs/errorBuilder";
+import { StandardErrorResponse } from "@/lib/nibrs/errorResponse";
 
 type ChatCompletionMessageParam = {
   role: "system" | "user" | "assistant";
@@ -52,6 +46,7 @@ function tryParseJSON(raw: string) {
 
   throw new Error("Model output is not valid JSON.");
 }
+
 function getSuggestedFixForTemplateError(error: string): string {
   if (error.includes("Evidence information is required")) {
     return "Add evidence details like 'field test kit' or 'evidence tag number' to the narrative";
@@ -61,6 +56,12 @@ function getSuggestedFixForTemplateError(error: string): string {
   }
   if (error.includes("is required for offense")) {
     return "Ensure all required fields are provided in the narrative";
+  }
+  if (error.includes("Drug/weapon offenses require a Society/Public victim")) {
+    return "Add 'Society/Public' as victim for drug or weapon offenses";
+  }
+  if (error.includes("Non-victimless offenses require individual or business victims")) {
+    return "Add individual victim information including injuries and demographics";
   }
   return "Review the narrative for missing required information";
 }
@@ -89,74 +90,94 @@ export async function POST(req: Request) {
 You are a NIBRS data extraction assistant and professional police report writer.
 From the user's free text, extract ALL relevant information including multiple offenses, victims, offenders, and properties.
 
+CRITICAL PROFESSIONAL RULES:
+1. FOCUS ON SERIOUS CRIMES: assault, theft, burglary, robbery, drug violations, weapon crimes
+2. TRAFFIC OFFENSES: Only include if DUI or serious injury involved - exclude simple traffic collisions
+3. DRUG/WEAPON OFFENSES: Use Society/Public victim (Type S) with injury "N"
+4. TRAFFIC COLLISIONS WITH INJURIES: Use individual victims (Type I) with specific injuries
+5. OTHER CRIMES: Use individual victims (Type I) with specific injuries
+6. REQUIRED FIELDS: incident date, location description, property values for stolen items
+
 Produce a NIBRS-aligned JSON object with these exact keys:
 {
-  "incidentNumber": string,
-  "incidentDate": "YYYY-MM-DD",
-  "incidentTime": "HH:mm" (if available, else omit),
-  "clearedExceptionally": "Y" | "N",
-  "exceptionalClearanceDate": "YYYY-MM-DD" (optional),
-  
-  "offenses": [
-    {
-      "description": string,
-      "attemptedCompleted": "A" | "C"
-    }
-  ],
-  
-  "locationDescription": string,
-  "weaponDescriptions": string[] (optional),
-  "biasMotivation": string (optional),
+  "extractedData": {
+    "incidentNumber": string (optional),
+    "incidentDate": "YYYY-MM-DD", // MUST be in this format
+    "incidentTime": "HH:mm" (if available, else omit),
+    "clearedExceptionally": "Y" | "N" (default "N"),
+    "exceptionalClearanceDate": "YYYY-MM-DD" (optional),
+    
+    "offenses": [
+      {
+        "description": string,
+        "attemptedCompleted": "A" | "C" (default "C")
+      }
+    ],
+    
+    "locationDescription": string,
+    "weaponDescriptions": string[] (optional),
+    "biasMotivation": string (optional),
 
-  "victims": [
-    {
-      "type": "I" | "B" | "F" | "G" | "L" | "O" | "P" | "R" | "S" | "U" (optional),
-      "age": number (optional),
-      "sex": "M" | "F" | "U" (optional),
-      "race": "W" | "B" | "I" | "A" | "P" | "U" (optional),
-      "ethnicity": "H" | "N" | "U" (optional),
-      "injury": string (optional)
-    }
-  ],
+    "victims": [
+      {
+        "type": "I" | "B" | "F" | "G" | "L" | "O" | "P" | "R" | "S" | "U",
+        "age": number (optional),
+        "sex": "M" | "F" | "U" (optional),
+        "race": "W" | "B" | "I" | "A" | "P" | "U" (optional),
+        "ethnicity": "H" | "N" | "U" (optional),
+        "injury": string (optional)
+      }
+    ],
 
-  "offenders": [
-    {
-      "age": number (optional),
-      "sex": "M" | "F" | "U" (optional),
-      "race": "W" | "B" | "I" | "A" | "P" | "U" (optional),
-      "ethnicity": "H" | "N" | "U" (optional),
-      "relationshipDescription": string (optional)
-    }
-  ],
+    "offenders": [
+      {
+        "age": number (optional),
+        "sex": "M" | "F" | "U" (optional),
+        "race": "W" | "B" | "I" | "A" | "P" | "U" (optional),
+        "ethnicity": "H" | "N" | "U" (optional),
+        "relationshipDescription": string (optional)
+      }
+    ],
 
-  "properties": [
-    {
-      "lossDescription": string (optional),
-      "propertyDescription": string (optional),
-      "value": number (optional)
-    }
-  ]
+    "properties": [
+      {
+        "lossDescription": string (optional),
+        "propertyDescription": string (optional),
+        "value": number (optional)
+      }
+    ]
+  },
+  "narrative": string
 }
 
-ALSO produce a clear professional narrative paragraph(s) for MS Word.
+DATE FORMATTING RULES:
+- Convert "September 11, 2025" to "2025-09-11"
+- Convert "19:45 hours" to "19:45"
+- Always use YYYY-MM-DD format for dates
 
-CRITICAL RULES FOR MULTIPLE ENTITIES:
-- For multiple offenses: include ALL offenses mentioned in the report
-- For multiple victims: include each victim with their specific details
-- For multiple offenders: include each offender with their specific details  
-- For multiple properties: include each property item with description and value
-- For drug crimes: DO NOT include victim data for those specific offenses
-- For weapon violations: DO NOT include victim data for those specific offenses
-- For business crimes: use relationshipDescription "business" not "stranger"
-- For multiple stolen items: list each separately in properties array
+VICTIM ASSIGNMENT RULES:
+- For drug crimes: ALWAYS include Type "S" (Society/Public) with injury "N"
+- For weapon violations: ALWAYS include Type "S" (Society/Public) with injury "N"  
+- For traffic collisions with injuries: Include Type "I" (Individual) with specific injuries
+- For assaults/thefts/burglaries: Include Type "I" (Individual) with specific injuries
+
+PROPERTY RULES:
+- For drugs: Include description, estimated value, and note if seized
+- For stolen items: Include detailed description and estimated value
+- For vehicles: Include make, model, year, and value
+
+ARREST RULES:
+- If arrest occurred, include offender demographics and arrest details
+- For Group B offenses, only include if arrest was made
 
 IMPORTANT:
 - Return a SINGLE JSON document with top-level keys "extractedData" and "narrative" ONLY
 - Use double quotes and valid JSON. Do not add markdown, comments, or extra text.
 - NEVER output NIBRS codes - only descriptive text that we can map to codes.
+- Include ALL relevant details from the narrative - don't omit important information.
 `;
 
-     const messages: ChatCompletionMessageParam[] = [
+    const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: systemInstructions },
       ...(selectedTemplate?.examples
         ? [{ role: "system" as const, content: `Example Report:\n${selectedTemplate.examples}` }]
@@ -170,7 +191,8 @@ IMPORTANT:
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages,
-      temperature: 0.2,
+      temperature: 0.1, // Lower temperature for more consistent results
+      response_format: { type: "json_object" }
     });
 
     const raw = completion.choices?.[0]?.message?.content ?? "";
@@ -184,7 +206,14 @@ IMPORTANT:
     } catch (e: any) {
       console.error("JSON parsing failed:", e.message);
       console.error("Raw response that failed:", raw);
-      throw new Error("Model did not return valid JSON. Raw response: " + raw);
+      
+      const errorResponse: StandardErrorResponse = {
+        error: "Model did not return valid JSON",
+        suggestions: ["Please rephrase your input and try again"],
+        nibrsData: {}
+      };
+      
+      return NextResponse.json(errorResponse, { status: 400 });
     }
 
     // Map descriptive data to NIBRS codes
@@ -193,101 +222,111 @@ IMPORTANT:
 
     if (!narrative) {
       console.error("Narrative missing from model output");
-      throw new Error("Narrative missing from model output");
+      
+      const errorResponse: StandardErrorResponse = {
+        error: "Narrative missing from model output",
+        suggestions: ["Please provide more detailed information about the incident"],
+        nibrsData: descriptiveData
+      };
+      
+      return NextResponse.json(errorResponse, { status: 400 });
     }
 
     console.log("Descriptive data before mapping:", JSON.stringify(descriptiveData, null, 2));
 
-    // Use the mapper to convert descriptive text to codes
-    const mapped = NibrsMapper.mapDescriptiveToNibrs({
+    // PROFESSIONAL VALIDATION - Check descriptive data before mapping
+    const professionalValidation = validateDescriptiveNibrs({
+      ...descriptiveData,
+      offenses: descriptiveData.offenses || [],
+      victims: descriptiveData.victims || [],
+      offenders: descriptiveData.offenders || [],
+      properties: descriptiveData.properties || [],
+      narrative: narrative
+    });
+
+    if (professionalValidation.errors.length > 0) {
+      const errorResponse = NIBRSErrorBuilder.fromProfessionalValidation(
+        professionalValidation,
+        descriptiveData
+      );
+      return NextResponse.json(errorResponse, { status: 400 });
+    }
+
+    // Mapper validation
+    const mapperValidation = NibrsMapper.validateAndMapExtract({
       ...descriptiveData,
       narrative
     });
 
-    console.log("Mapped data after NibrsMapper:", JSON.stringify(mapped, null, 2));
-
-    // Ensure incidentNumber exists
-    if (!mapped.incidentNumber) {
-      mapped.incidentNumber = `INC-${Date.now()}`;
-      console.log("Generated incident number:", mapped.incidentNumber);
+    if (mapperValidation.errors.length > 0) {
+      const errorResponse = NIBRSErrorBuilder.fromMapperValidation(mapperValidation);
+      return NextResponse.json(errorResponse, { status: 400 });
     }
 
-    // Defaults
-    mapped.offenseAttemptedCompleted = mapped.offenseAttemptedCompleted || "C";
-    mapped.clearedExceptionally = mapped.clearedExceptionally || "N";
+    const mapped = mapperValidation.data;
+    console.log("Mapped data after NibrsMapper:", JSON.stringify(mapped, null, 2));
 
-    console.log("Data after defaults:", JSON.stringify(mapped, null, 2));
+    // Run your existing validator (zod + logical checks)
+    const { ok, data, errors, warnings: validationWarnings, correctionContext } = validateNibrsPayload(mapped);
+
+    console.log("Validation result:", { ok, errors, warnings: validationWarnings });
 
     // Check mapping confidence and add warnings
-    const warnings: string[] = [];
+    const warnings: string[] = [...validationWarnings];
     
     // Check offense mapping confidence
-    if (mapped.offenses && Array.isArray(mapped.offenses)) {
-      mapped.offenses.forEach((offense: any, index: number) => {
-        if (offense.mappingConfidence < 0.6) {
+    if (data.offenses && Array.isArray(data.offenses)) {
+      data.offenses.forEach((offense: any) => {
+        if (offense.mappingConfidence && offense.mappingConfidence < 0.6) {
           warnings.push(`Low confidence in offense mapping: ${offense.code} (confidence: ${offense.mappingConfidence})`);
         }
       });
     }
-    
-    if (mapped.mappingConfidence?.location < 0.6) {
-      warnings.push(`Low confidence in location mapping: ${mapped.locationCode} (confidence: ${mapped.mappingConfidence.location})`);
+
+    if (!ok && errors.length > 0) {
+      const errorResponse = NIBRSErrorBuilder.fromSchemaValidation(
+        errors,
+        warnings,
+        data,
+        correctionContext
+      );
+      return NextResponse.json(errorResponse, { status: 400 });
     }
 
-    console.log("Warnings generated:", warnings);
+    // Also run template-based validation (business rules)
+    const templateErrors = validateWithTemplate(data);
+    if (templateErrors.length > 0) {
+      // Create proper correction context for template errors
+      const templateCorrectionContext = {
+        missingVictims: correctionContext?.missingVictims || [],
+        ambiguousProperties: correctionContext?.ambiguousProperties || [],
+        requiredFields: correctionContext?.requiredFields || [],
+        multiOffenseIssues: correctionContext?.multiOffenseIssues || [],
+        templateErrors: templateErrors.map(error => ({
+          message: error,
+          offenseCode: data.offenses?.[0]?.code,
+          suggestedFix: getSuggestedFixForTemplateError(error)
+        }))
+      };
 
-    // Run your existing validator (zod + logical checks)
-    // Run your existing validator (zod + logical checks)
-const { ok, data, errors, warnings: validationWarnings, correctionContext } = validateNibrsPayload(mapped);
-
-console.log("Validation result:", { ok, errors, warnings: validationWarnings });
-
-// Combine warnings from mapping and validation
-const allWarnings = [...warnings, ...validationWarnings];
-
-if (!ok && errors.length > 0) {
-  return NextResponse.json({ 
-    errors, 
-    warnings: allWarnings,
-    nibrs: mapped,
-    mappingConfidence: mapped.mappingConfidence,
-    correctionContext: correctionContext, // USE THE correctionContext FROM VALIDATION
-  }, { status: 400 });
-}
-
-// Also run template-based validation (business rules)
-const templateErrors = validateWithTemplate(mapped);
-if (templateErrors.length > 0) {
-  // Create proper correction context for template errors
-  const templateCorrectionContext = {
-    missingVictims: correctionContext?.missingVictims || [],
-    ambiguousProperties: correctionContext?.ambiguousProperties || [],
-    requiredFields: correctionContext?.requiredFields || [],
-    multiOffenseIssues: correctionContext?.multiOffenseIssues || [],
-    templateErrors: templateErrors.map(error => ({
-      message: error,
-      offenseCode: mapped.offenses?.[0]?.code,
-      suggestedFix: getSuggestedFixForTemplateError(error)
-    }))
-  };
-
-  return NextResponse.json({ 
-    errors: templateErrors, 
-    warnings: allWarnings,
-    nibrs: mapped,
-    mappingConfidence: mapped.mappingConfidence,
-    correctionContext: templateCorrectionContext,
-  }, { status: 400 });
-}
+      const errorResponse = NIBRSErrorBuilder.fromTemplateValidation(
+        templateErrors,
+        warnings,
+        data,
+        templateCorrectionContext
+      );
+      
+      return NextResponse.json(errorResponse, { status: 400 });
+    }
 
     // Build XML if everything is good
-    const xml = buildNibrsXML(data);
+    const xml = buildNIBRSXML(data);
     console.log("Generated XML successfully");
 
     const processingTime = Date.now() - startTime;
     await trackReportEvent({
       userId: userId!,
-      reportType: "accident",
+      reportType: "nibrs",
       processingTime,
       success: true,
       templateUsed: selectedTemplate?.id || null,
@@ -295,37 +334,38 @@ if (templateErrors.length > 0) {
     await trackUserActivity({
       userId: userId!,
       activity: "report_created",
-      metadata: { reportType: "accident", templateUsed: selectedTemplate?.id },
+      metadata: { reportType: "nibrs", templateUsed: selectedTemplate?.id },
     });
     if (!isPro) await increaseAPiLimit();
 
-    // Save the human-readable narrative to history (as before)
+    // Save the human-readable narrative to history
     await saveHistoryReport(
       userId!,
       `${Date.now()}`,
       narrative,
-      "accident"
+      "nibrs"
     );
+
     console.log("Final response data offenses:", data.offenses);
+    
     return NextResponse.json(
       {
         narrative,
         nibrs: data,
         xml,
-        mappingConfidence: mapped.mappingConfidence,
         warnings: warnings.length > 0 ? warnings : undefined
       },
       { status: 200 }
     );
   } catch (error: any) {
-    console.log("[ACCIDENT_REPORT_ERROR]", error?.message || error);
+    console.log("[NIBRS_REPORT_ERROR]", error?.message || error);
     console.error("Full error:", error);
 
     const processingTime = Date.now() - startTime;
     if (userId) {
       await trackReportEvent({
         userId,
-        reportType: "accident",
+        reportType: "nibrs",
         processingTime,
         success: false,
         error: error?.message || "Unknown error",
@@ -333,10 +373,17 @@ if (templateErrors.length > 0) {
       await trackUserActivity({
         userId,
         activity: "report_failed",
-        metadata: { reportType: "accident", error: error?.message || "Unknown error" },
+        metadata: { reportType: "nibrs", error: error?.message || "Unknown error" },
       });
     }
 
-    return new NextResponse(error?.message || "Internal Error", { status: 500 });
+    // Return standardized error response for internal errors
+    const errorResponse: StandardErrorResponse = {
+      error: error?.message || "Internal server error",
+      suggestions: ["Please try again or contact support if the issue persists"],
+      statusCode: 500
+    };
+    
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 }

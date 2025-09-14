@@ -31,11 +31,13 @@ const NibrsSummary = ({ nibrs, xmlData }: NIBRSSummaryProps) => {
 
       {/* Basic Incident Information */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-700 mb-4">
-        <div><span className="font-medium">Incident #:</span> {nibrs.incidentNumber}</div>
-        <div><span className="font-medium">Date:</span> {nibrs.incidentDate} {nibrs.incidentTime ? `@ ${nibrs.incidentTime}` : ""}</div>
+        <div><span className="font-medium">Incident #:</span> {nibrs.administrative?.incidentNumber}</div>
+        <div><span className="font-medium">Date:</span> {nibrs.administrative?.incidentDate} {nibrs.administrative?.incidentTime ? `@ ${nibrs.administrative.incidentTime}` : ""}</div>
         <div><span className="font-medium">Location Code:</span> {nibrs.locationCode}</div>
-        <div><span className="font-medium">Cleared Exceptionally:</span> {nibrs.clearedExceptionally}</div>
-        {nibrs.clearedBy && <div><span className="font-medium">Cleared By:</span> {nibrs.clearedBy}</div>}
+        <div><span className="font-medium">Cleared Exceptionally:</span> {nibrs.administrative?.clearedExceptionally}</div>
+        {nibrs.administrative?.clearedBy && (
+          <div><span className="font-medium">Cleared By:</span> {nibrs.administrative.clearedBy}</div>
+        )}
       </div>
 
       {/* Multiple Offenses Section */}
