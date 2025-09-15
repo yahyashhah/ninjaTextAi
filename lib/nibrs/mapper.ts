@@ -369,7 +369,7 @@ export class NibrsMapper {
             ? Math.max(0, Number(property.value)) 
             : undefined,
           sequenceNumber: index + 1,
-          seized: property.seized !== undefined ? property.seized : property.descriptionCode === "10"
+          seized: property.seized !== undefined ? property.seized : property.lossType === "6" // Seized
         }));
     }
 
@@ -420,19 +420,19 @@ export class NibrsMapper {
         continue;
       }
 
-      const inputWords = inputLower.split(/\s+/);
-      const keyWords = keyLower.split(/\s+/);
-      
-      const matchingWords = inputWords.filter(word => 
-        keyWords.some(kw => kw.includes(word) || word.includes(kw))
-      ).length;
+    const inputWords = inputLower.split(/\s+/);
+    const keyWords = keyLower.split(/\s+/);
+    
+    const matchingWords = inputWords.filter(word => 
+      keyWords.some(kw => kw.includes(word) || word.includes(kw))
+    ).length;
 
-      if (matchingWords > 0) {
-        const confidence = 0.6 + (matchingWords / Math.max(inputWords.length, keyWords.length)) * 0.3;
-        if (confidence > bestMatch.confidence) {
-          bestMatch = { code, confidence, originalInput: input };
-        }
+    if (matchingWords > 0) {
+      const confidence = 0.6 + (matchingWords / Math.max(inputWords.length, keyWords.length)) * 0.3;
+      if (confidence > bestMatch.confidence) {
+        bestMatch = { code, confidence, originalInput: input };
       }
+    }
     }
 
     if (bestMatch.confidence < 0.5) {
@@ -622,7 +622,7 @@ static mapEvidenceToProperties(evidence: Array<{description: string; type?: stri
       updatedProperties.push({
         description: evidenceItem.description,
         descriptionCode: evidenceItem.type === "Firearm" ? "11" : "34", // Firearm or Other
-        lossType: "7", // Seized
+        lossType: "6", // Seized
         seized: true,
         value: evidenceItem.type === "Firearm" ? 500 : undefined // Default value for firearms
       });
@@ -630,7 +630,7 @@ static mapEvidenceToProperties(evidence: Array<{description: string; type?: stri
       // Update existing property to mark as seized
       updatedProperties[existingIndex] = {
         ...updatedProperties[existingIndex],
-        lossType: "7", // Seized
+        lossType: "6", // Seized
         seized: true
       };
     }
@@ -767,29 +767,80 @@ static mapEvidenceToProperties(evidence: Array<{description: string; type?: stri
     return "UN";
   }
 
+  // CORRECTED LOSS TYPE MAPPING
   static mapLossType(description: string | undefined): string {
-    if (!description) return "7";
+    if (!description) return "8"; // Default to Unknown
     
+    const inputLower = description.toLowerCase();
+    
+    // Standard NIBRS Loss Type Codes
     const lossMapping: Record<string, string> = {
-      "stolen": "1", "steal": "1", "theft": "1", "taken": "1", "missing": "1",
-      "embezzled": "2", "embezzle": "2",
-      "counterfeit": "3", "fake": "3",
-      "destroyed": "4", "destroy": "4", "demolished": "4", "shattered": "4", 
-      "damaged": "4", "damage": "4", "broken": "4", "crashed": "4", "vandalized": "4",
-      "recovered": "6", "recover": "6", "found": "6", "returned": "6",
-      "seized": "7", "seize": "7", "confiscated": "7", "evidence": "7", "secured": "7",
-      "ransomed": "8", "ransom": "8",
-      "extorted": "9", "extortion": "9"
+      // 1 = None
+      "none": "1", "no loss": "1", "not applicable": "1", "n/a": "1",
+      
+      // 2 = Burned
+      "burned": "2", "fire": "2", "arson": "2", "incinerated": "2", "charred": "2",
+      "scorched": "2", "ablaze": "2", "flames": "2", "combusted": "2",
+      
+      // 3 = Counterfeited/Forged
+      "counterfeit": "3", "fake": "3", "forged": "3", "fraudulent": "3", "replica": "3",
+      "imitation": "3", "bogus": "3", "phony": "3", "knockoff": "3",
+      
+      // 4 = Destroyed/Damaged/Vandalized
+      "destroyed": "4", "damaged": "4", "vandalized": "4", "broken": "4", 
+      "shattered": "4", "demolished": "4", "wrecked": "4", "crushed": "4",
+      "defaced": "4", "graffiti": "4", "smashed": "4", "ruined": "4", "torn": "4",
+      "bent": "4", "scratched": "4", "dented": "4", "keyed": "4",
+      
+      // 5 = Recovered
+      "recovered": "5", "found": "5", "returned": "5", "retrieved": "5", "located": "5",
+      "repossessed": "5", "restored": "5",
+      
+      // 6 = Seized
+      "seized": "6", "confiscated": "6", "impounded": "6", "evidence": "6",
+      "secured": "6", "held as evidence": "6", "forfeited": "6", "apprehended": "6",
+      
+      // 7 = Stolen
+      "stolen": "7", "theft": "7", "taken": "7", "missing": "7", "purloined": "7",
+      "pilfered": "7", "snatched": "7", "swiped": "7", "heist": "7", "robbery": "7",
+      "burglary": "7", "larceny": "7", "embezzled": "7", "ripped off": "7",
+      
+      // 8 = Unknown
+      "unknown": "8", "unclear": "8", "unsure": "8", "uncertain": "8", "undetermined": "8"
     };
 
-    const inputLower = description.toLowerCase();
+    // Exact match first
+    for (const [key, code] of Object.entries(lossMapping)) {
+      if (inputLower === key) {
+        return code;
+      }
+    }
+    
+    // Partial match
     for (const [key, code] of Object.entries(lossMapping)) {
       if (inputLower.includes(key)) {
         return code;
       }
     }
     
-    return "7";
+    // Special cases for common phrases
+    if (inputLower.includes("stole") || inputLower.includes("took") || inputLower.includes("missing")) {
+      return "7"; // Stolen
+    }
+    
+    if (inputLower.includes("break") || inputLower.includes("smash") || inputLower.includes("crack")) {
+      return "4"; // Destroyed/Damaged/Vandalized
+    }
+    
+    if (inputLower.includes("fire") || inputLower.includes("burn")) {
+      return "2"; // Burned
+    }
+    
+    if (inputLower.includes("fake") || inputLower.includes("copy")) {
+      return "3"; // Counterfeited/Forged
+    }
+    
+    return "8"; // Default to Unknown
   }
 
   static assignProfessionalVictims(offenses: any[], extract: DescriptiveExtract): any[] {
@@ -940,12 +991,12 @@ static mapEvidenceToProperties(evidence: Array<{description: string; type?: stri
             
             return {
               descriptionCode: property.code,
-              description: prop.propertyDescription || "Unknown", // Ensure description is always a string
-              lossType: lossType as "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9", // Narrow type
+              description: prop.propertyDescription || "Unknown",
+              lossType: lossType as "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8",
               value: prop.value ? Math.max(0, Number(prop.value)) : undefined,
               sequenceNumber: index + 1,
-              seized: isDrug, // Drugs are always seized
-              drugMeasurement: drugDetails.measurement, // Map drug details explicitly
+              seized: lossType === "6", // Only seized if loss type is 6
+              drugMeasurement: drugDetails.measurement,
               drugQuantity: drugDetails.quantity
             };
           });
@@ -1049,6 +1100,15 @@ static mapEvidenceToProperties(evidence: Array<{description: string; type?: stri
       
       if (!mapped.locationCode || !Object.values(NIBRS_LOCATION_CODES).includes(mapped.locationCode)) {
         warnings.push(`Location code ${mapped.locationCode} may not be standard NIBRS`);
+      }
+      
+      // Validate loss types
+      if (mapped.properties) {
+        mapped.properties.forEach((property: any) => {
+          if (property.lossType && !["1", "2", "3", "4", "5", "6", "7", "8"].includes(property.lossType)) {
+            warnings.push(`Invalid loss type code: ${property.lossType}`);
+          }
+        });
       }
       
       // Validate arrestees if present

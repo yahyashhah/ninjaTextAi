@@ -139,8 +139,6 @@ const NibrsSummary = ({ nibrs, xmlData }: NIBRSSummaryProps) => {
                 <div className="grid grid-cols-2 gap-2">
                   <div><span className="font-medium">Code:</span> {property.descriptionCode}</div>
                   <div><span className="font-medium">Loss Type:</span> {
-                    property.lossType === "1" ? "Stolen" :
-                    property.lossType === "5" ? "Damaged" :
                     property.lossType
                   }</div>
                 </div>
