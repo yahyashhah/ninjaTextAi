@@ -23,7 +23,7 @@ export const OffenderSchema = z.object({
 });
 
 export const PropertySchema = z.object({
-  lossType: z.enum(["1","2","3","4","5","6","7","8","9"]).default("7"),
+  lossType: z.enum(["1","2","3","4","5","6","7","8","9"]).default("8"),
   descriptionCode: z.string(),
   value: z.number().int().min(0).optional(),
   description: z.string(),
