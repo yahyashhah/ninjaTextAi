@@ -78,6 +78,9 @@ const BaseReport = ({
   const [nibrs, setNibrs] = useState<any | null>(null);
   const [xmlData, setXmlData] = useState<string | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [correctionData, setCorrectionData] = useState<CorrectionData | null>(null);
   const timerRef = useRef<NodeJS.Timeout>();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -154,6 +157,99 @@ const BaseReport = ({
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
+  };
+
+  const handleFileUpload = async (file: File) => {
+    if (!file) return;
+    
+    // Validate file type and size
+    const validTypes = ['audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/webm', 'audio/ogg'];
+    const maxSize = 25 * 1024 * 1024; // 25MB
+    
+    if (!validTypes.includes(file.type)) {
+      toast({
+        title: "Invalid File Type",
+        description: "Please upload an audio file (MP3, WAV, MP4, WebM, or OGG)",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (file.size > maxSize) {
+      toast({
+        title: "File Too Large",
+        description: "Please upload an audio file smaller than 25MB",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setIsUploading(true);
+    setUploadProgress(0);
+    setSelectedFile(file);
+    
+    try {
+      const formData = new FormData();
+      formData.append('audio', file);
+      formData.append('reportType', reportType);
+      
+      const response = await axios.post('/api/transcribe-audio', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / (progressEvent.total || 1)
+          );
+          setUploadProgress(percentCompleted);
+        },
+      });
+      
+      if (response.data.transcript) {
+        setPrompt(prev => prev + " " + response.data.transcript);
+        toast({
+          title: "Upload Successful",
+          description: "Audio has been transcribed and added to your report",
+          variant: "default",
+        });
+      }
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      toast({
+        title: "Upload Failed",
+        description: error.response?.data?.message || "Failed to transcribe audio",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+      setSelectedFile(null);
+    }
+  };
+
+  // Add handler for file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+  };
+
+  // Add handler for drag and drop
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileUpload(files[0]);
+    }
+  };
+
+  // Add handler for drag over
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   // Submit recording handler
@@ -446,6 +542,14 @@ const BaseReport = ({
             pauseRecording={pauseRecording}
             submitRecording={submitRecording}
             startRecording={startRecording}
+            // Add upload functionality to RecordingControls
+            isUploading={isUploading}
+            uploadProgress={uploadProgress}
+            handleFileSelect={handleFileSelect}
+            handleDragOver={handleDragOver}
+            handleDrop={handleDrop}
+            selectedFile={selectedFile}
+            setSelectedFile={setSelectedFile}
           />
         )}
 
@@ -460,6 +564,14 @@ const BaseReport = ({
             recordingTip={recordingTip}
             showRecordingControls={showRecordingControls}
             textareaRef={textareaRef}
+            // Add upload functionality to PromptInput
+            isUploading={isUploading}
+            uploadProgress={uploadProgress}
+            handleFileSelect={handleFileSelect}
+            handleDragOver={handleDragOver}
+            handleDrop={handleDrop}
+            selectedFile={selectedFile}
+            setSelectedFile={setSelectedFile}
           />
         )}
       </div>

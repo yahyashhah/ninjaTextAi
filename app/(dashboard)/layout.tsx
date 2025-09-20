@@ -18,7 +18,7 @@ const DashboardLayout = async ({ children }: { children: React.ReactNode }) => {
 
   const isPro: boolean = !!(orgId 
     ? await checkOrgSubscription(orgId)
-    : await checkSubscription());
+    : await checkSubscription(userId));
 
   return (
     <div className={cn("h-full relative bg-white")}>
