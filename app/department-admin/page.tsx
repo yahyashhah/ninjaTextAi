@@ -30,6 +30,8 @@ import { OfficerActivity } from "@/components/department-admin/officer-activity"
 import { MonthlyReports } from "@/components/department-admin/monthly-reports";
 import { MemberManagement } from "@/components/department-admin/member-management";
 import { KpiDashboard } from "@/components/department-admin/kpi-dashboard";
+import { useRouter } from "next/navigation";
+import { AuthLogs } from "@/components/department-admin/auth-logs";
 // import { AuditLog } from "@/components/department-admin/audit-log";
 
 interface DepartmentData {
@@ -57,6 +59,7 @@ interface DepartmentData {
 
 export default function DepartmentAdminPage() {
   const { userId } = useAuth();
+  const router = useRouter();
   const { organization } = useOrganization();
   const [data, setData] = useState<DepartmentData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -99,9 +102,8 @@ export default function DepartmentAdminPage() {
     if (organization) {
       fetchDepartmentData();
       
-      // Set up periodic refresh every 5 minutes
-      const interval = setInterval(fetchDepartmentData, 5 * 60 * 1000);
-      return () => clearInterval(interval);
+      // const interval = setInterval(fetchDepartmentData, 5 * 60 * 1000);
+      // return () => clearInterval(interval);
     }
   }, [organization, fetchDepartmentData]);
 
@@ -127,6 +129,13 @@ export default function DepartmentAdminPage() {
       console.error('Error sending test notification:', error);
       alert('Failed to send test notification');
     }
+  };
+
+  const handleRoleSwitch = () => {
+    // Store the current URL to return after role selection
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+    const returnUrl = encodeURIComponent(currentPath);
+    router.push(`/role-selector?change=true&return=${returnUrl}`);
   };
 
   // Show loading state only for initial load, not tab switches
@@ -205,6 +214,17 @@ export default function DepartmentAdminPage() {
               {data.stats.overdueItems} Overdue Reviews
             </Badge>
           )}
+          
+          {/* Add the Role Switcher Button here */}
+          <Button 
+            variant="outline" 
+            onClick={handleRoleSwitch}
+            className="flex items-center gap-2"
+          >
+            <Settings className="h-4 w-4" />
+            Switch Role
+          </Button>
+          
           <Button 
             variant="outline" 
             size="sm" 
@@ -223,7 +243,7 @@ export default function DepartmentAdminPage() {
           <TabsTrigger value="members">Members ({data?.stats?.totalMembers || 0})</TabsTrigger>
           <TabsTrigger value="reports">Monthly Reports</TabsTrigger>
           <TabsTrigger value="activity">Officer Activity</TabsTrigger>
-          {/* <TabsTrigger value="kpis">KPI Dashboard</TabsTrigger> */}
+          <TabsTrigger value="auth-logs">Authentication Logs</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
         
@@ -353,9 +373,9 @@ export default function DepartmentAdminPage() {
           <OfficerActivity organizationId={organization.id} />
         </TabsContent>
         
-        {/* <TabsContent value="kpis">
-          <KpiDashboard kpis={data?.kpis} />
-        </TabsContent> */}
+        <TabsContent value="auth-logs">
+          <AuthLogs organizationId={organization.id} />
+        </TabsContent>
         
         <TabsContent value="settings">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

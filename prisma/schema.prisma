@@ -170,7 +170,7 @@ model ReportEvent {
 model UserActivity {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   userId    String
-  user      User     @relation(fields: [userId], references: [clerkUserId], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [clerkUserId], onDelete: Cascade)
   activity  String
   metadata  String?
   createdAt DateTime @default(now())

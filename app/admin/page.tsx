@@ -6,11 +6,14 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button"; // Add Button import
+import { Settings } from "lucide-react"; // Add Settings icon import
 import AdminDashboard from "@/components/admin/AdminDashboard";
 import UserManagement from "@/components/admin/UserManagement";
 import AuditLogs from "@/components/admin/AuditLogs";
 import SystemHealth from "@/components/admin/SystemHealth";
-import FeedbackManagement from "@/components/admin/FeedbackManagement"; // Add this import
+import FeedbackManagement from "@/components/admin/FeedbackManagement";
+import { OrganizationManagement } from "@/components/admin/OrganizationManagement";
 
 const AdminPage = () => {
   const { user, isLoaded: userLoaded } = useUser();
@@ -18,6 +21,14 @@ const AdminPage = () => {
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Add this function to handle role switching
+  const handleRoleSwitch = () => {
+    // Store the current URL to return after role selection
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+    const returnUrl = encodeURIComponent(currentPath);
+    router.push(`/role-selector?change=true&return=${returnUrl}`);
+  };
 
   useEffect(() => {
     const checkAdminStatus = async () => {
@@ -82,10 +93,22 @@ const AdminPage = () => {
   return (
     <div className="container mx-auto p-6 bg-white min-h-screen h-full">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Welcome, {user?.firstName} {user?.lastName}
-        </p>
+        <div>
+          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Welcome, {user?.firstName} {user?.lastName}
+          </p>
+        </div>
+        
+        {/* Add Role Switcher Button */}
+        <Button 
+          variant="outline" 
+          onClick={handleRoleSwitch}
+          className="flex items-center gap-2"
+        >
+          <Settings className="h-4 w-4" />
+          Switch Role
+        </Button>
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
@@ -94,7 +117,8 @@ const AdminPage = () => {
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="audit">Audit Logs</TabsTrigger>
           <TabsTrigger value="system">System Health</TabsTrigger>
-          <TabsTrigger value="feedback">User Feedback</TabsTrigger> {/* Add this tab */}
+          <TabsTrigger value="organizations">Organizations</TabsTrigger>
+          <TabsTrigger value="feedback">User Feedback</TabsTrigger>
         </TabsList>
         
         <TabsContent value="overview" className="space-y-4">
@@ -136,8 +160,20 @@ const AdminPage = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="organizations">
+          <Card>
+            <CardHeader>
+              <CardTitle>Organization Management</CardTitle>
+              <CardDescription>Create and manage organizations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <OrganizationManagement />
+            </CardContent>
+          </Card>
+        </TabsContent>
         
-        <TabsContent value="feedback"> {/* Add this tab content */}
+        <TabsContent value="feedback">
           <Card>
             <CardHeader>
               <CardTitle>User Feedback</CardTitle>

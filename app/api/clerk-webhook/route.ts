@@ -97,7 +97,51 @@ export async function POST(req: Request) {
           }
         });
       }
+    } else if (eventType === 'organizationMembership.created') {
+  const { organization, public_user_data } = evt.data;
+  
+  // Record organization membership added
+  await prismadb.userActivity.create({
+    data: {
+      userId: public_user_data.user_id,
+      activity: 'org_member_added',
+      metadata: JSON.stringify({
+        organizationId: organization.id,
+        organizationName: organization.name,
+        role: evt.data.role
+      })
     }
+  });
+} else if (eventType === 'organizationMembership.deleted') {
+  const { organization, public_user_data } = evt.data;
+  
+  // Record organization membership removed
+  await prismadb.userActivity.create({
+    data: {
+      userId: public_user_data.user_id,
+      activity: 'org_member_removed',
+      metadata: JSON.stringify({
+        organizationId: organization.id,
+        organizationName: organization.name
+      })
+    }
+  });
+} else if (eventType === 'organizationMembership.updated') {
+  const { organization, public_user_data, role } = evt.data;
+  
+  // Record organization membership role change
+  await prismadb.userActivity.create({
+    data: {
+      userId: public_user_data.user_id,
+      activity: 'org_role_changed',
+      metadata: JSON.stringify({
+        organizationId: organization.id,
+        organizationName: organization.name,
+        newRole: role
+      })
+    }
+  });
+}
     
   } catch (error) {
     console.error('Error handling webhook:', error);
