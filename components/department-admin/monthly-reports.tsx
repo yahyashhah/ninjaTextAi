@@ -1,10 +1,12 @@
+// components/department-admin/monthly-reports.tsx (FIXED)
 "use client";
 
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, BarChart3, TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Download, BarChart3, TrendingUp, TrendingDown, RefreshCw, FileText } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 
 interface MonthlyReportsProps {
   organizationId: string;
@@ -22,11 +24,29 @@ interface MonthlyReport {
   generatedAt: string;
 }
 
+interface NIBRSData {
+  monthlyComparison: any;
+  ytdComparison: any;
+  summary: any;
+}
+
+const NIBRS_OFFENSE_CATEGORIES = {
+  crimeAgainstPerson: 'Crime Against Person',
+  crimeAgainstProperty: 'Crime Against Property', 
+  crimeAgainstSociety: 'Crime Against Society'
+};
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
 export function MonthlyReports({ organizationId }: MonthlyReportsProps) {
   const [reports, setReports] = useState<MonthlyReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedReport, setSelectedReport] = useState<MonthlyReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,7 +57,6 @@ export function MonthlyReports({ organizationId }: MonthlyReportsProps) {
     try {
       setIsLoading(true);
       setError(null);
-      console.log('Fetching monthly reports for year:', selectedYear);
       
       const response = await fetch(
         `/api/department/monthly-reports?orgId=${organizationId}&year=${selectedYear}`
@@ -48,8 +67,12 @@ export function MonthlyReports({ organizationId }: MonthlyReportsProps) {
       }
       
       const result = await response.json();
-      console.log('Monthly reports data:', result);
       setReports(result.reports || []);
+      
+      // Auto-select the most recent report if available
+      if (result.reports && result.reports.length > 0) {
+        setSelectedReport(result.reports[0]);
+      }
     } catch (error) {
       console.error("Error fetching monthly reports:", error);
       setError(error instanceof Error ? error.message : 'Failed to load reports');
@@ -67,8 +90,6 @@ export function MonthlyReports({ organizationId }: MonthlyReportsProps) {
       const currentMonth = currentDate.getMonth() + 1;
       const currentYear = currentDate.getFullYear();
       
-      console.log('Generating report for:', { month: currentMonth, year: currentYear });
-      
       const response = await fetch('/api/department/monthly-reports?orgId=' + organizationId, {
         method: 'POST',
         headers: {
@@ -83,96 +104,262 @@ export function MonthlyReports({ organizationId }: MonthlyReportsProps) {
       const result = await response.json();
       
       if (response.ok) {
-        console.log('Report generated successfully:', result);
         alert('Monthly report generated successfully!');
-        fetchMonthlyReports(); // Refresh the list
+        fetchMonthlyReports();
       } else {
         throw new Error(result.error || 'Failed to generate report');
       }
     } catch (error) {
       console.error('Error generating report:', error);
       setError(error instanceof Error ? error.message : 'Failed to generate report');
-      alert('Failed to generate report. Check console for details.');
+      alert('Failed to generate report.');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const exportReport = async (format: 'csv' | 'pdf' | 'excel') => {
-  try {
-    // Get the most recent report for export
-    const latestReport = reports[0];
-    if (!latestReport) {
-      alert('No reports available for export');
+  // FIXED: Proper report selection handler
+  const handleReportSelect = (report: MonthlyReport) => {
+    setSelectedReport(report);
+  };
+
+  // NEW: Export functionality
+  const exportReport = async (format: 'csv' | 'json') => {
+    if (!selectedReport) {
+      alert('Please select a report to export');
       return;
     }
 
-    // Create export data
-    const exportData = {
-      month: latestReport.month,
-      year: latestReport.year,
-      totalReports: latestReport.totalReports,
-      totalOfficers: latestReport.totalOfficers,
-      averageAccuracy: latestReport.averageAccuracy,
-      offenses: JSON.parse(latestReport.offenses || '{}'),
-      comparisonData: JSON.parse(latestReport.comparisonData || '{}')
-    };
+    try {
+      const response = await fetch(
+        `/api/department/monthly-reports?orgId=${organizationId}&reportId=${selectedReport.id}&format=${format}`,
+        {
+          method: 'PUT'
+        }
+      );
 
-    // For CSV export
-    if (format === 'csv') {
-      const csvContent = [
-        ['Metric', 'Value'],
-        ['Month', `${exportData.month}/${exportData.year}`],
-        ['Total Reports', exportData.totalReports.toString()],
-        ['Total Officers', exportData.totalOfficers.toString()],
-        ['Average Accuracy', `${exportData.averageAccuracy.toFixed(2)}%`],
-        ['', ''],
-        ['Offense Type', 'Count']
-      ];
-
-      // Add offense counts with proper type casting
-      Object.entries(exportData.offenses).forEach(([offense, count]) => {
-        csvContent.push([offense, (count as number).toString()]);
-      });
-
-      // Create and download CSV
-      const csvString = csvContent.map(row => row.join(',')).join('\n');
-      const blob = new Blob([csvString], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `monthly-report-${exportData.month}-${exportData.year}.csv`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-    } else {
-      alert(`${format.toUpperCase()} export would be implemented here`);
-      // Implement PDF/Excel export logic
+      if (response.ok && format === 'csv') {
+        // For CSV, create download
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `nibrs-report-${MONTH_NAMES[selectedReport.month - 1]}-${selectedReport.year}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else if (response.ok) {
+        const data = await response.json();
+        console.log('Exported data:', data);
+        alert('JSON data exported to console');
+      } else {
+        throw new Error('Export failed');
+      }
+    } catch (error) {
+      console.error('Error exporting report:', error);
+      alert('Failed to export report');
     }
-  } catch (error) {
-    console.error('Error exporting report:', error);
-    alert('Failed to export report');
-  }
-};
+  };
 
-  // Prepare data for charts
-  const monthlyData = Array.from({ length: 12 }, (_, i) => {
-    const month = i + 1;
-    const report = reports.find(r => r.month === month && r.year === selectedYear);
-    return {
-      name: new Date(selectedYear, i, 1).toLocaleString('default', { month: 'short' }),
-      reports: report?.totalReports || 0,
-      accuracy: report?.averageAccuracy || 0
-    };
-  });
+  const formatPercentage = (value: number) => {
+    if (value === 0) return '0%';
+    if (!value && value !== 0) return 'NC';
+    const sign = value > 0 ? '+' : '';
+    return `${sign}${value.toFixed(0)}%`;
+  };
 
-  // Calculate YTD totals
-  const currentMonth = new Date().getMonth() + 1;
-  const ytdReports = monthlyData.slice(0, currentMonth).reduce((sum, month) => sum + month.reports, 0);
-  const ytdAccuracy = monthlyData.slice(0, currentMonth).reduce((sum, month) => sum + month.accuracy, 0) / Math.max(1, currentMonth);
+  const getTrendIcon = (value: number) => {
+    if (value > 0) return <TrendingUp className="h-3 w-3 mr-1 text-green-500" />;
+    if (value < 0) return <TrendingDown className="h-3 w-3 mr-1 text-red-500" />;
+    return null;
+  };
 
-  // Get comparison data from the most recent report
-  const latestReport = reports[0]; // Reports are sorted descending
-  const comparisonData = latestReport ? JSON.parse(latestReport.comparisonData || '{}') : {};
+  const renderNIBRSTable = (nibrsData: NIBRSData) => {
+    if (!nibrsData.monthlyComparison) {
+      return (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-lg font-medium mb-2">No NIBRS Data Available</h3>
+            <p className="text-muted-foreground">
+              This report doesn't contain NIBRS offense data. Please generate a new report.
+            </p>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* Main NIBRS Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>NIBRS Monthly Report - {MONTH_NAMES[selectedReport!.month - 1]} {selectedReport!.year}</CardTitle>
+            <CardDescription>
+              Group A Offense Statistics - Generated: {new Date(selectedReport!.generatedAt).toLocaleDateString()}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="font-bold">OFFENSE</TableHead>
+                    <TableHead>{MONTH_NAMES[selectedReport!.month - 1]} {selectedReport!.year - 1}</TableHead>
+                    <TableHead>{MONTH_NAMES[selectedReport!.month - 1]} {selectedReport!.year}</TableHead>
+                    <TableHead>+/-</TableHead>
+                    <TableHead>YTD {selectedReport!.year - 1}</TableHead>
+                    <TableHead>YTD {selectedReport!.year}</TableHead>
+                    <TableHead>YTD +/-</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Object.entries(NIBRS_OFFENSE_CATEGORIES).map(([categoryKey, categoryLabel]) => {
+                    const categoryData = nibrsData.monthlyComparison[categoryKey];
+                    const ytdCategoryData = nibrsData.ytdComparison[categoryKey];
+                    
+                    if (!categoryData) return null;
+                    
+                    return (
+                      <>
+                        {/* Category Total Row */}
+                        <TableRow key={categoryKey} className="bg-muted/50 font-semibold">
+                          <TableCell className="font-bold">{categoryLabel}</TableCell>
+                          <TableCell>{categoryData.total?.previous || 0}</TableCell>
+                          <TableCell>{categoryData.total?.current || 0}</TableCell>
+                          <TableCell>
+                            <span className="flex items-center">
+                              {getTrendIcon(categoryData.total?.change)}
+                              {formatPercentage(categoryData.total?.change)}
+                            </span>
+                          </TableCell>
+                          <TableCell>{ytdCategoryData?.total?.previous || 0}</TableCell>
+                          <TableCell>{ytdCategoryData?.total?.current || 0}</TableCell>
+                          <TableCell>
+                            <span className="flex items-center">
+                              {getTrendIcon(ytdCategoryData?.total?.change)}
+                              {formatPercentage(ytdCategoryData?.total?.change)}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                        
+                        {/* Individual Offenses */}
+                        {categoryData.offenses && Object.entries(categoryData.offenses).map(([offense, data]: [string, any]) => (
+                          <TableRow key={offense} className="text-sm">
+                            <TableCell className="pl-8">{offense}</TableCell>
+                            <TableCell>{data.previous || 0}</TableCell>
+                            <TableCell>{data.current || 0}</TableCell>
+                            <TableCell>
+                              <span className="flex items-center">
+                                {getTrendIcon(data.change)}
+                                {formatPercentage(data.change)}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              {ytdCategoryData?.offenses[offense]?.previous || 0}
+                            </TableCell>
+                            <TableCell>
+                              {ytdCategoryData?.offenses[offense]?.current || 0}
+                            </TableCell>
+                            <TableCell>
+                              <span className="flex items-center">
+                                {getTrendIcon(ytdCategoryData?.offenses[offense]?.change)}
+                                {formatPercentage(ytdCategoryData?.offenses[offense]?.change)}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </>
+                    );
+                  })}
+                  
+                  {/* Grand Total */}
+                  <TableRow className="bg-primary/10 font-bold">
+                    <TableCell>TOTAL:</TableCell>
+                    <TableCell>{nibrsData.summary?.totalReports?.previousYear || 0}</TableCell>
+                    <TableCell>{nibrsData.summary?.totalReports?.currentMonth || 0}</TableCell>
+                    <TableCell>
+                      <span className="flex items-center">
+                        {getTrendIcon(nibrsData.monthlyComparison?.totalChange)}
+                        {formatPercentage(nibrsData.monthlyComparison?.totalChange)}
+                      </span>
+                    </TableCell>
+                    <TableCell>{nibrsData.summary?.totalReports?.ytdPrevious || 0}</TableCell>
+                    <TableCell>{nibrsData.summary?.totalReports?.ytdCurrent || 0}</TableCell>
+                    <TableCell>
+                      <span className="flex items-center">
+                        {getTrendIcon(nibrsData.ytdComparison?.totalChange)}
+                        {formatPercentage(nibrsData.ytdComparison?.totalChange)}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+            <div className="mt-4 text-sm text-muted-foreground">
+              *NC = Not Calculable
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Export Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Export Report</CardTitle>
+            <CardDescription>
+              Download this report for external analysis or record keeping
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => exportReport('csv')}>
+                <Download className="h-4 w-4 mr-2" />
+                Export as CSV
+              </Button>
+              <Button variant="outline" onClick={() => exportReport('json')}>
+                <Download className="h-4 w-4 mr-2" />
+                Export as JSON
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Summary Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Total Officers</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{nibrsData.summary?.totalOfficers || 0}</div>
+              <div className="text-xs text-muted-foreground">Active this month</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Report Accuracy</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{Math.round(nibrsData.summary?.averageAccuracy || 0)}%</div>
+              <div className="text-xs text-muted-foreground">Average accuracy score</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Total Reports</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{nibrsData.summary?.totalReports?.currentMonth || 0}</div>
+              <div className="text-xs text-muted-foreground">Reports this month</div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -203,9 +390,9 @@ export function MonthlyReports({ organizationId }: MonthlyReportsProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Monthly Reports</h2>
+          <h2 className="text-2xl font-bold">NIBRS Monthly Reports</h2>
           <p className="text-muted-foreground">
-            Performance metrics and trends analysis
+            Group A offense statistics and trends analysis
           </p>
         </div>
         <div className="flex gap-2">
@@ -232,10 +419,10 @@ export function MonthlyReports({ organizationId }: MonthlyReportsProps) {
       {reports.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <BarChart3 className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="text-lg font-medium mb-2">No Monthly Reports</h3>
+            <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-lg font-medium mb-2">No NIBRS Reports</h3>
             <p className="text-muted-foreground mb-4">
-              Generate your first monthly report to see analytics and trends.
+              Generate your first NIBRS monthly report to see detailed offense statistics.
             </p>
             <Button onClick={generateReport} disabled={isGenerating}>
               Generate Report
@@ -244,124 +431,37 @@ export function MonthlyReports({ organizationId }: MonthlyReportsProps) {
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">YTD Reports</CardTitle>
-                <BarChart3 className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{ytdReports}</div>
-                <p className="text-xs text-muted-foreground flex items-center">
-                  {comparisonData.ytdVsPreviousYear > 0 ? (
-                    <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-                  ) : comparisonData.ytdVsPreviousYear < 0 ? (
-                    <TrendingDown className="h-3 w-3 mr-1 text-red-500" />
-                  ) : null}
-                  {Math.abs(comparisonData.ytdVsPreviousYear || 0).toFixed(1)}% vs previous year
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">YTD Accuracy</CardTitle>
-                <BarChart3 className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{Math.round(ytdAccuracy)}%</div>
-                <p className="text-xs text-muted-foreground">
-                  Average across all reports
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Officers</CardTitle>
-                <BarChart3 className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {latestReport?.totalOfficers || 0}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Current month
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Reports by Month</CardTitle>
-                <CardDescription>
-                  Monthly report submission trends for {selectedYear}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={monthlyData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="reports" stroke="#3b82f6" name="Reports" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Accuracy by Month</CardTitle>
-                <CardDescription>
-                  Monthly accuracy trends for {selectedYear}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={monthlyData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis domain={[70, 100]} />
-                      <Tooltip formatter={(value) => [`${value}%`, 'Accuracy']} />
-                      <Line type="monotone" dataKey="accuracy" stroke="#10b981" name="Accuracy %" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
+          {/* Report Selection - FIXED */}
           <Card>
             <CardHeader>
-              <CardTitle>Export Reports</CardTitle>
+              <CardTitle>Select Report</CardTitle>
               <CardDescription>
-                Download monthly reports for external analysis
+                Choose a monthly report to view detailed statistics
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => exportReport('csv')}>
-                  <Download className="h-4 w-4 mr-2" />
-                  CSV Export
-                </Button>
-                <Button variant="outline" onClick={() => exportReport('pdf')}>
-                  <Download className="h-4 w-4 mr-2" />
-                  PDF Summary
-                </Button>
-                <Button variant="outline" onClick={() => exportReport('excel')}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Excel Format
-                </Button>
+                {reports.map(report => (
+                  <Button
+                    key={report.id}
+                    variant={selectedReport?.id === report.id ? "default" : "outline"}
+                    onClick={() => handleReportSelect(report)}
+                    className="flex items-center gap-2"
+                  >
+                    {MONTH_NAMES[report.month - 1]} {report.year}
+                    <Badge variant="secondary">
+                      {report.totalReports} reports
+                    </Badge>
+                  </Button>
+                ))}
               </div>
             </CardContent>
           </Card>
+
+          {/* NIBRS Report Display */}
+          {selectedReport && (
+            renderNIBRSTable(JSON.parse(selectedReport.offenses || '{}'))
+          )}
         </>
       )}
     </div>
