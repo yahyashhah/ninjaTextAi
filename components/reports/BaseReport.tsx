@@ -18,6 +18,7 @@ import ReportOutput from "./ReportOutput";
 import RecordingControls from "./RecordingControls";
 import PromptInput from "./PromptInput";
 import CorrectionUI from "./CorrectionUI";
+import { UnifiedReport } from "./UnifiedReport";
 
 
 export type Template = {
@@ -375,7 +376,8 @@ const BaseReport = ({
       if (!response.data?.narrative || !response.data?.nibrs || !response.data?.xml) {
         throw new Error("Unexpected API response format");
       }
-
+      console.log("API Response:", response.data);
+      
       setMessage(response.data.narrative);
       setNibrs(response.data.nibrs);
       setXmlData(response.data.xml);
@@ -493,17 +495,16 @@ const BaseReport = ({
               />
             )}
             
-            {nibrs && (
-              <NibrsSummary 
-                nibrs={nibrs}
-                xmlData={xmlData}
-              />
-            )}
-            
-            <ReportOutput
-              message={message}
-              reportType={reportType}
-            />
+            <UnifiedReport
+      narrative={message}
+      nibrsData={nibrs}
+      xmlData={xmlData}
+      reportType={reportType}
+      onSave={(savedData) => {
+        // Optional callback after save
+        console.log("Report saved to filing cabinet:", savedData);
+      }}
+    />
           </div>
         ) : !selectedTemplate ? (
           <TemplateSelectionUI

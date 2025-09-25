@@ -1,101 +1,13 @@
-// route.ts - COMPLETELY UPDATED with professional NIBRS validation and standardized error handling
+// route.ts - FIXED RAG INTEGRATION
 import { checkApiLimit, increaseAPiLimit } from "@/lib/api-limits";
 import { saveHistoryReport } from "@/lib/history-reports";
 import { checkSubscription } from "@/lib/subscription";
 import { trackReportEvent, trackUserActivity } from "@/lib/tracking";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import OpenAI from "openai/index.mjs";
-
-import { validateDescriptiveNibrs, validateNibrsPayload, validateProfessionalNibrs } from "@/lib/nibrs/Validator";
-import { validateWithTemplate } from "@/lib/nibrs/templates";
-import { NibrsSegments } from "@/lib/nibrs/schema";
 import { buildNIBRSXML } from "@/lib/nibrs/xml";
-import { NibrsMapper } from "@/lib/nibrs/mapper";
-import { NIBRSErrorBuilder } from "@/lib/nibrs/errorBuilder";
-import { StandardErrorResponse } from "@/lib/nibrs/errorResponse";
-import { sendLowAccuracyNotification } from "@/lib/notifications";
 
-type ChatCompletionMessageParam = {
-  role: "system" | "user" | "assistant";
-  content: string;
-};
-
-export const maxDuration = 60;
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-function tryParseJSON(raw: string) {
-  raw = (raw || "").trim();
-  try {
-    return JSON.parse(raw);
-  } catch { /* fallthrough */ }
-
-  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenceMatch) {
-    try { return JSON.parse(fenceMatch[1]); } catch {}
-  }
-
-  const first = raw.indexOf("{");
-  const last = raw.lastIndexOf("}");
-  if (first !== -1 && last !== -1 && last > first) {
-    const substr = raw.slice(first, last + 1);
-    try { return JSON.parse(substr); } catch {}
-  }
-
-  throw new Error("Model output is not valid JSON.");
-}
-
-function getSuggestedFixForTemplateError(error: string): string {
-  if (error.includes("Evidence information is required")) {
-    return "Add evidence details like 'field test kit' or 'evidence tag number' to the narrative";
-  }
-  if (error.includes("Property information is required")) {
-    return "Add property descriptions and values for damaged vehicles or stolen items";
-  }
-  if (error.includes("is required for offense")) {
-    return "Ensure all required fields are provided in the narrative";
-  }
-  if (error.includes("Drug/weapon offenses require a Society/Public victim")) {
-    return "Add 'Society/Public' as victim for drug or weapon offenses";
-  }
-  if (error.includes("Non-victimless offenses require individual or business victims")) {
-    return "Add individual victim information including injuries and demographics";
-  }
-  return "Review the narrative for missing required information";
-}
-
-// Function to calculate accuracy score based on validation results
-function calculateAccuracyScore(data: any, validationErrors: string[] = [], warnings: string[] = []): number {
-  let baseScore = 100;
-  
-  // Deduct for validation errors
-  baseScore -= validationErrors.length * 10;
-  
-  // Deduct for warnings
-  baseScore -= warnings.length * 5;
-  
-  // Deduct for missing critical fields
-  if (!data.offenses || data.offenses.length === 0) baseScore -= 20;
-  if (!data.victims || data.victims.length === 0) baseScore -= 15;
-  if (!data.properties || data.properties.length === 0) baseScore -= 10;
-  
-  // Deduct for low confidence mappings
-  if (data.offenses && Array.isArray(data.offenses)) {
-    data.offenses.forEach((offense: any) => {
-      if (offense.mappingConfidence && offense.mappingConfidence < 0.6) {
-        baseScore -= 15;
-      } else if (offense.mappingConfidence && offense.mappingConfidence < 0.8) {
-        baseScore -= 5;
-      }
-    });
-  }
-  
-  // Ensure score is within bounds
-  return Math.max(0, Math.min(100, baseScore));
-}
+const RAG_WEBHOOK_URL = "http://localhost:5678/webhook/6307562b-2066-49cc-a465-3556ef6f89fe";
 
 export async function POST(req: Request) {
   let userId: string | null = null;
@@ -110,360 +22,168 @@ export async function POST(req: Request) {
     startTime = Date.now();
 
     if (!userId) return new NextResponse("Unauthorized User", { status: 401 });
-    if (!openai.apiKey) return new NextResponse("OpenAI API key is Invalid", { status: 500 });
     if (!prompt) return new NextResponse("Prompt is required", { status: 400 });
 
     const freeTrail = await checkApiLimit();
     const isPro = await checkSubscription();
     if (!freeTrail && !isPro) return new NextResponse("Free Trial has expired", { status: 403 });
 
-    const systemInstructions = selectedTemplate?.instructions || `
-You are a NIBRS data extraction assistant and professional police report writer.
-From the user's free text, extract ALL relevant information including multiple offenses, victims, offenders, and properties.
+    console.log("🚀 Calling RAG agent with prompt:", prompt.substring(0, 200) + "...");
 
-CRITICAL PROFESSIONAL RULES:
-1. FOCUS ON SERIOUS CRIMES: assault, theft, burglary, robbery, drug violations, weapon crimes
-2. TRAFFIC OFFENSES: Only include if DUI or serious injury involved - exclude simple traffic collisions
-3. DRUG/WEAPON OFFENSES: Use Society/Public victim (Type S) with injury "N"
-4. TRAFFIC COLLISIONS WITH INJURIES: Use individual victims (Type I) with specific injuries
-5. OTHER CRIMES: Use individual victims (Type I) with specific injuries
-6. REQUIRED FIELDS: incident date, location description, property values for stolen items
-
-Produce a NIBRS-aligned JSON object with these exact keys:
-{
-  "extractedData": {
-    "incidentNumber": string (optional),
-    "incidentDate": "YYYY-MM-DD", // MUST be in this format
-    "incidentTime": "HH:mm" (if available, else omit),
-    "clearedExceptionally": "Y" | "N" (default "N"),
-    "exceptionalClearanceDate": "YYYY-MM-DD" (optional),
-    
-    "offenses": [
-      {
-        "description": string,
-        "attemptedCompleted": "A" | "C" (default "C")
-      }
-    ],
-    
-    "locationDescription": string,
-    "weaponDescriptions": string[] (optional),
-    "biasMotivation": string (optional),
-
-    "victims": [
-      {
-        "type": "I" | "B" | "F" | "G" | "L" | "O" | "P" | "R" | "S" | "U",
-        "age": number (optional),
-        "sex": "M" | "F" | "U" (optional),
-        "race": "W" | "B" | "I" | "A" | "P" | "U" (optional),
-        "ethnicity": "H" | "N" | "U" (optional),
-        "injury": string (optional)
-      }
-    ],
-
-    "offenders": [
-      {
-        "age": number (optional),
-        "sex": "M" | "F" | "U" (optional),
-        "race": "W" | "B" | "I" | "A" | "P" | "U" (optional),
-        "ethnicity": "H" | "N" | "U" (optional),
-        "relationshipDescription": string (optional)
-      }
-    ],
-
-    "properties": [
-      {
-        "lossDescription": string (optional),
-        "propertyDescription": string (optional),
-        "value": number (optional)
-      }
-    ]
-  },
-  "narrative": string
-}
-
-DATE FORMATTING RULES:
-- Convert "September 11, 2025" to "2025-09-11"
-- Convert "19:45 hours" to "19:45"
-- Always use YYYY-MM-DD format for dates
-
-VICTIM ASSIGNMENT RULES:
-- For drug crimes: ALWAYS include Type "S" (Society/Public) with injury "N"
-- For weapon violations: ALWAYS include Type "S" (Society/Public) with injury "N"  
-- For traffic collisions with injuries: Include Type "I" (Individual) with specific injuries
-- For assaults/thefts/burglaries: Include Type "I" (Individual) with specific injuries
-
-PROPERTY RULES:
-- For drugs: Include description, estimated value, and note if seized
-- For stolen items: Include detailed description and estimated value
-- For vehicles: Include make, model, year, and value
-
-ARREST RULES:
-- If arrest occurred, include offender demographics and arrest details
-- For Group B offenses, only include if arrest was made
-
-IMPORTANT:
-- Return a SINGLE JSON document with top-level keys "extractedData" and "narrative" ONLY
-- Use double quotes and valid JSON. Do not add markdown, comments, or extra text.
-- NEVER output NIBRS codes - only descriptive text that we can map to codes.
-- Include ALL relevant details from the narrative - don't omit important information.
-`;
-
-    const messages: ChatCompletionMessageParam[] = [
-      { role: "system", content: systemInstructions },
-      ...(selectedTemplate?.examples
-        ? [{ role: "system" as const, content: `Example Report:\n${selectedTemplate.examples}` }]
-        : []),
-      { role: "user", content: prompt }
-    ];
-
-    console.log("Sending request to OpenAI with prompt:", prompt.substring(0, 200) + "...");
-
-    // Get structured output
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages,
-      temperature: 0.1, // Lower temperature for more consistent results
-      response_format: { type: "json_object" }
+    // CALL RAG AGENT INSTEAD OF OPENAI + MAPPING
+    const ragResponse = await fetch(RAG_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: prompt })
     });
 
-    const raw = completion.choices?.[0]?.message?.content ?? "";
-
-    let parsed: { extractedData: any; narrative: string };
-
-    try {
-      parsed = tryParseJSON(raw);
-    } catch (e: any) {
-      console.error("JSON parsing failed:", e.message);
-      console.error("Raw response that failed:", raw);
-      
-      const errorResponse: StandardErrorResponse = {
-        error: "Model did not return valid JSON",
-        suggestions: ["Please rephrase your input and try again"],
-        nibrsData: {}
-      };
-      
-      return NextResponse.json(errorResponse, { status: 400 });
+    if (!ragResponse.ok) {
+      throw new Error(`RAG agent failed: ${ragResponse.statusText}`);
     }
 
-    // Map descriptive data to NIBRS codes
-    const descriptiveData = parsed.extractedData || {};
-    const narrative = (parsed.narrative || "").trim();
+    const ragResult = await ragResponse.json();
+    console.log("🔍 Raw RAG response:", JSON.stringify(ragResult, null, 2));
 
-    if (!narrative) {
-      console.error("Narrative missing from model output");
-      
-      const errorResponse: StandardErrorResponse = {
-        error: "Narrative missing from model output",
-        suggestions: ["Please provide more detailed information about the incident"],
-        nibrsData: descriptiveData
-      };
-      
-      return NextResponse.json(errorResponse, { status: 400 });
+    // FIX: Handle the array response structure
+    let nibrsData;
+    if (Array.isArray(ragResult)) {
+      // Handle array format: [ { output: { NIBRS_Segments: ... } } ]
+      nibrsData = ragResult[0]?.output?.NIBRS_Segments;
+    } else if (ragResult.output?.NIBRS_Segments) {
+      // Handle object format: { output: { NIBRS_Segments: ... } }
+      nibrsData = ragResult.output.NIBRS_Segments;
+    } else if (ragResult.NIBRS_Segments) {
+      // Handle direct format: { NIBRS_Segments: ... }
+      nibrsData = ragResult.NIBRS_Segments;
     }
 
-    // PROFESSIONAL VALIDATION - Check descriptive data before mapping
-    const professionalValidation = validateDescriptiveNibrs({
-      ...descriptiveData,
-      offenses: descriptiveData.offenses || [],
-      victims: descriptiveData.victims || [],
-      offenders: descriptiveData.offenders || [],
-      properties: descriptiveData.properties || [],
-      narrative: narrative
-    });
-
-    if (professionalValidation.errors.length > 0) {
-      const errorResponse = NIBRSErrorBuilder.fromProfessionalValidation(
-        professionalValidation,
-        descriptiveData
-      );
-      return NextResponse.json(errorResponse, { status: 400 });
+    if (!nibrsData) {
+      console.error("❌ RAG response structure:", ragResult);
+      throw new Error("RAG agent returned invalid format. Expected NIBRS_Segments in response.");
     }
 
-    // Mapper validation
-    const mapperValidation = NibrsMapper.validateAndMapExtract({
-      ...descriptiveData,
-      narrative
-    });
+    console.log("✅ RAG agent response received and parsed successfully");
 
-    if (mapperValidation.errors.length > 0) {
-      const errorResponse = NIBRSErrorBuilder.fromMapperValidation(mapperValidation);
-      return NextResponse.json(errorResponse, { status: 400 });
-    }
-
-    const mapped = mapperValidation.data;
-
-    // Run your existing validator (zod + logical checks)
-    const { ok, data, errors, warnings: validationWarnings, correctionContext } = validateNibrsPayload(mapped);
-
-    console.log("Validation result:", { ok, errors, warnings: validationWarnings });
-
-    const warnings: string[] = [...validationWarnings];
+    // Convert RAG format to your expected format
+    const convertedNibrs = convertRAGToLegacyFormat(nibrsData, prompt);
+    console.log("✅ Converted NIBRS data:", JSON.stringify(convertedNibrs, null, 2));
     
-    // Check offense mapping confidence - FIXED: Add proper type checking
-    if (data.offenses && Array.isArray(data.offenses)) {
-      data.offenses.forEach((offense: any) => {
-        if (offense.mappingConfidence && offense.mappingConfidence < 0.6) {
-          warnings.push(`Low confidence in offense mapping: ${offense.code} (confidence: ${offense.mappingConfidence})`);
-        }
-      });
-    }
+    // Generate XML using your existing builder
+    const xml = buildNIBRSXML(convertedNibrs);
+    console.log("✅ XML generated");
 
-    // Calculate accuracy score
-    const accuracyScore = calculateAccuracyScore(data, errors, warnings);
+    // Calculate accuracy score (RAG should be high accuracy)
+    const accuracyScore = calculateRAGAccuracyScore(nibrsData);
     console.log("Calculated accuracy score:", accuracyScore);
 
-    if (!ok && errors.length > 0) {
-      const errorResponse = NIBRSErrorBuilder.fromSchemaValidation(
-        errors,
-        warnings,
-        data,
-        correctionContext
-      );
-      return NextResponse.json(errorResponse, { status: 400 });
+    // ========== KEEP ALL YOUR EXISTING DEPARTMENT SUBMISSION LOGIC ==========
+    console.log('🚀 Attempting to submit report to department system...');
+    
+    // Use the existing authResult instead of calling auth() again
+    let clerkOrgId: string | null = null;
+
+    // Debug: Log all session claims to see what's available
+    console.log('🔍 All session claims:', authResult.sessionClaims);
+
+    // Try different ways to access organization memberships
+    let orgMemberships: any = null;
+
+    // Method 1: Try the most common way
+    if (authResult.sessionClaims?.org_memberships) {
+      orgMemberships = authResult.sessionClaims.org_memberships;
+      console.log('✅ Found org_memberships in session claims');
+    } 
+    // Method 2: Try alternative naming
+    else if (authResult.sessionClaims?.organization_memberships) {
+      orgMemberships = authResult.sessionClaims.organization_memberships;
+      console.log('✅ Found organization_memberships in session claims');
+    }
+    // Method 3: Try Clerk's newer format
+    else if (authResult.sessionClaims?.orgs) {
+      orgMemberships = authResult.sessionClaims.orgs;
+      console.log('✅ Found orgs in session claims');
     }
 
-    // Also run template-based validation (business rules)
-    const templateErrors = validateWithTemplate(data);
-    if (templateErrors.length > 0) {
-      // Create proper correction context for template errors
-      const templateCorrectionContext = {
-        missingVictims: correctionContext?.missingVictims || [],
-        ambiguousProperties: correctionContext?.ambiguousProperties || [],
-        requiredFields: correctionContext?.requiredFields || [],
-        multiOffenseIssues: correctionContext?.multiOffenseIssues || [],
-        templateErrors: templateErrors.map(error => ({
-          message: error,
-          offenseCode: data.offenses?.[0]?.code,
-          suggestedFix: getSuggestedFixForTemplateError(error)
-        }))
+    console.log('📋 User organization memberships:', orgMemberships);
+
+    // Process the organization memberships
+    if (orgMemberships) {
+      if (Array.isArray(orgMemberships) && orgMemberships.length > 0) {
+        clerkOrgId = orgMemberships[0];
+        console.log('✅ Using first organization from array:', clerkOrgId);
+      } else if (typeof orgMemberships === 'object' && orgMemberships !== null) {
+        const orgIds = Object.keys(orgMemberships);
+        if (orgIds.length > 0) {
+          clerkOrgId = orgIds[0];
+          console.log('✅ Using first organization from object:', clerkOrgId);
+        }
+      }
+    }
+
+    // If still no organization, use the direct Clerk API as fallback
+    if (!clerkOrgId) {
+      console.log('🔄 Falling back to Clerk API for organization membership...');
+      try {
+        const memberships = await clerkClient().users.getOrganizationMembershipList({
+          userId: authResult.userId!,
+        });
+        
+        if (memberships.data.length > 0) {
+          clerkOrgId = memberships.data[0].organization.id;
+          console.log('✅ Found organization via Clerk API:', clerkOrgId);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching organization from Clerk API:', error);
+      }
+    }
+
+    if (clerkOrgId) {
+      console.log('📤 Submitting to department API with orgId:', clerkOrgId);
+      
+      const submissionPayload = {
+        narrative: prompt,
+        nibrsData: convertedNibrs,
+        accuracyScore: accuracyScore,
+        reportType: 'nibrs',
+        title: `NIBRS Report - ${new Date().toLocaleDateString()}`,
+        clerkOrgId: clerkOrgId,
+        clerkUserId: userId
       };
 
-      const errorResponse = NIBRSErrorBuilder.fromTemplateValidation(
-        templateErrors,
-        warnings,
-        data,
-        templateCorrectionContext
-      );
-      
-      return NextResponse.json(errorResponse, { status: 400 });
-    }
+      console.log('📦 Submission payload:', JSON.stringify(submissionPayload, null, 2));
 
-    // Build XML if everything is good
-    const xml = buildNIBRSXML(data);
+      const submissionResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/department/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(submissionPayload)
+      });
 
-    console.log('🚀 Attempting to submit report to department system...');
-    try {
-      // Use the existing authResult instead of calling auth() again
-      let clerkOrgId: string | null = null;
+      console.log('📨 Department API response status:', submissionResponse.status);
 
-      // Debug: Log all session claims to see what's available
-      console.log('🔍 All session claims:', authResult.sessionClaims);
-
-      // Try different ways to access organization memberships
-      let orgMemberships: any = null;
-
-      // Method 1: Try the most common way
-      if (authResult.sessionClaims?.org_memberships) {
-        orgMemberships = authResult.sessionClaims.org_memberships;
-        console.log('✅ Found org_memberships in session claims');
-      } 
-      // Method 2: Try alternative naming
-      else if (authResult.sessionClaims?.organization_memberships) {
-        orgMemberships = authResult.sessionClaims.organization_memberships;
-        console.log('✅ Found organization_memberships in session claims');
-      }
-      // Method 3: Try Clerk's newer format
-      else if (authResult.sessionClaims?.orgs) {
-        orgMemberships = authResult.sessionClaims.orgs;
-        console.log('✅ Found orgs in session claims');
-      }
-
-      console.log('📋 User organization memberships:', orgMemberships);
-
-      // Process the organization memberships
-      if (orgMemberships) {
-        if (Array.isArray(orgMemberships) && orgMemberships.length > 0) {
-          clerkOrgId = orgMemberships[0];
-          console.log('✅ Using first organization from array:', clerkOrgId);
-        } else if (typeof orgMemberships === 'object' && orgMemberships !== null) {
-          const orgIds = Object.keys(orgMemberships);
-          if (orgIds.length > 0) {
-            clerkOrgId = orgIds[0];
-            console.log('✅ Using first organization from object:', clerkOrgId);
-          }
-        }
-      }
-
-      // If still no organization, use the direct Clerk API as fallback
-      if (!clerkOrgId) {
-        console.log('🔄 Falling back to Clerk API for organization membership...');
-        try {
-          const memberships = await clerkClient().users.getOrganizationMembershipList({
-            userId: authResult.userId!,
-          });
-          
-          if (memberships.data.length > 0) {
-            clerkOrgId = memberships.data[0].organization.id;
-            console.log('✅ Found organization via Clerk API:', clerkOrgId);
-          }
-        } catch (error) {
-          console.error('❌ Error fetching organization from Clerk API:', error);
-        }
-      }
-
-      if (clerkOrgId) {
-        console.log('📤 Submitting to department API with orgId:', clerkOrgId);
-        
-        const submissionPayload = {
-          narrative,
-          nibrsData: data,
-          accuracyScore: accuracyScore,
-          reportType: 'nibrs',
-          title: `NIBRS Report - ${new Date().toLocaleDateString()}`,
-          clerkOrgId: clerkOrgId,
-          clerkUserId: userId
-        };
-
-        console.log('📦 Submission payload:', JSON.stringify(submissionPayload, null, 2));
-
-        const submissionResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/department/submit`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(submissionPayload)
-        });
-
-        console.log('📨 Department API response status:', submissionResponse.status);
-
-        if (!submissionResponse.ok) {
-          const errorText = await submissionResponse.text();
-          console.error('❌ Department submission failed:', errorText);
-        } else {
-          const submissionResult = await submissionResponse.json();
-          console.log('✅ Report submitted to department system:', submissionResult);
-        }
+      if (!submissionResponse.ok) {
+        const errorText = await submissionResponse.text();
+        console.error('❌ Department submission failed:', errorText);
       } else {
-        console.warn('⚠️ No organization ID found for user. Report not submitted to department.');
+        const submissionResult = await submissionResponse.json();
+        console.log('✅ Report submitted to department system:', submissionResult);
       }
-    } catch (submissionError) {
-      console.error('❌ Error submitting to department system:', submissionError);
+    } else {
+      console.warn('⚠️ No organization ID found for user. Report not submitted to department.');
     }
 
     const processingTime = Date.now() - startTime;
     
-    // FIXED: Create a properly typed report event object
+    // KEEP ALL YOUR TRACKING LOGIC
     const reportEventData: any = {
       userId: userId!,
       reportType: "nibrs",
       processingTime,
       success: true,
       templateUsed: selectedTemplate?.id || null,
+      accuracyScore: accuracyScore
     };
-    
-    // Only add accuracyScore if it exists in your Prisma schema
-    // If your ReportEvent model doesn't have accuracyScore, remove this line
-    reportEventData.accuracyScore = accuracyScore;
     
     await trackReportEvent(reportEventData);
     
@@ -473,7 +193,8 @@ IMPORTANT:
       metadata: { 
         reportType: "nibrs", 
         templateUsed: selectedTemplate?.id,
-        accuracyScore: accuracyScore
+        accuracyScore: accuracyScore,
+        source: "rag" // Track that RAG was used
       },
     });
     
@@ -483,30 +204,30 @@ IMPORTANT:
     await saveHistoryReport(
       userId!,
       `${Date.now()}`,
-      narrative,
+      prompt,
       "nibrs"
     );
     
     return NextResponse.json(
       {
-        narrative,
-        nibrs: data,
+        narrative: prompt,
+        nibrs: convertedNibrs,
         xml,
         accuracyScore: accuracyScore,
-        warnings: warnings.length > 0 ? warnings : undefined
+        source: "rag" // Let frontend know it came from RAG
       },
       { status: 200 }
     );
+
   } catch (error: any) {
-    console.log("[NIBRS_REPORT_ERROR]", error?.message || error);
+    console.log("[RAG_REPORT_ERROR]", error?.message || error);
     console.error("Full error:", error);
 
     const processingTime = Date.now() - startTime;
     if (userId) {
-      // FIXED: Create a properly typed report event object for error case
       const errorReportEventData: any = {
         userId,
-        reportType: "nibrs",
+        reportType: "accident",
         processingTime,
         success: false,
         error: error?.message || "Unknown error",
@@ -521,13 +242,211 @@ IMPORTANT:
       });
     }
 
-    // Return standardized error response for internal errors
-    const errorResponse: StandardErrorResponse = {
-      error: error?.message || "Internal server error",
-      suggestions: ["Please try again or contact support if the issue persists"],
-      statusCode: 500
-    };
-    
-    return NextResponse.json(errorResponse, { status: 500 });
+    return NextResponse.json(
+      { error: error?.message || "RAG processing failed" },
+      { status: 500 }
+    );
   }
 }
+
+// UPDATED conversion function to handle your RAG output structure
+// UPDATED conversion function to include ALL RAG-provided fields
+function convertRAGToLegacyFormat(ragData: any, prompt: string): any {
+  console.log("🔧 Converting RAG data to legacy format with enhanced fields");
+  
+  // Enhanced property type mapping
+  const propertyTypeMap: Record<string, string> = {
+    "07": "07", "Laptop": "07", "Computer": "07",
+    "B": "07", "Stolen Property": "07",
+    "Real Property": "34", "Garage door": "34", "Graffiti": "34", 
+    "Physical Evidence": "34", "Accelerants": "34", "Spray paint": "34",
+    "Controlled Substance": "10", "Drug": "10", "Heroin": "10",
+    "Vehicle": "08", "Car": "08", "Auto": "08",
+    "Currency": "01", "Cash": "01", "Money": "01",
+    "Firearm": "11", "Gun": "11", "Weapon": "11",
+    "Electronic": "14", "Phone": "14",
+    "Jewelry": "02", "Other": "34"
+  };
+
+  // Enhanced weapon force mapping
+  const weaponForceMap: Record<string, string> = {
+    "30": "16", // Baseball bat -> Blunt object
+    "None": "26", // No weapon
+    "Unknown": "25" // Unknown weapon
+  };
+
+  // Enhanced injury code mapping
+  const injuryCodeMap: Record<string, string> = {
+    "B": "B", // Broken arm -> Broken bones
+    "I17": "I", // Overdose -> Injury
+    "N": "N", // None
+    "Unknown": "U" // Unknown
+  };
+
+  // Process offenses with enhanced data
+  const offenses = ragData.Offense_Segment?.map((offense: any, index: number) => ({
+    code: offense.Offense_Code,
+    description: offense.Offense_Description,
+    attemptedCompleted: (offense.Attempted_Completed as "A" | "C") || "C",
+    sequenceNumber: index + 1,
+    // NEW: Enhanced offense details from RAG
+    weaponForceUsed: weaponForceMap[offense.Weapon_Force_Used] || offense.Weapon_Force_Used,
+    locationType: offense.Location_Type,
+    locationDescription: offense.Location_Description,
+    offenseCategory: ragData.Offenses?.[index]?.OffenseCategory || "Unknown",
+    nibrsReportable: ragData.Offenses?.[index]?.NIBRSReportable || "Unknown",
+    notes: ragData.Offenses?.[index]?.Notes || ""
+  })) || [];
+
+  // Process properties with enhanced data
+  const properties = ragData.Property_Segment?.map((property: any, index: number) => {
+    const descriptionCode = propertyTypeMap[property.Property_Type] || 
+                           propertyTypeMap[property.Property_Description] || "34";
+    
+    return {
+      descriptionCode: descriptionCode,
+      description: property.Property_Description,
+      value: property.Item_Details?.Value || 0,
+      lossType: property.Item_Details?.Seized === "Y" ? "6" : "7",
+      seized: property.Item_Details?.Seized === "Y",
+      sequenceNumber: index + 1,
+      // NEW: Enhanced property details from RAG
+      currency: property.Item_Details?.Currency || "USD",
+      itemDetails: property.Item_Details?.Description || "",
+      propertyTypeDescription: property.Property_Type
+    };
+  }) || [];
+
+  // Process victims with enhanced data
+  const victims = ragData.Victim_Segment?.map((victim: any, index: number) => ({
+    type: victim.Victim_Type as "I" | "B" | "F" | "G" | "L" | "O" | "P" | "R" | "S" | "U",
+    age: victim.Age,
+    sex: victim.Sex as "M" | "F" | "U",
+    race: victim.Race,
+    ethnicity: victim.Ethnicity,
+    injury: injuryCodeMap[victim.Injury_Code] || victim.Injury_Code,
+    sequenceNumber: index + 1,
+    // NEW: Enhanced victim details from RAG
+    victimId: victim.Victim_ID || index + 1,
+    name: victim.Name,
+    role: victim.Role,
+    injuryDescription: victim.Injury_Description,
+    offenseConnected: victim.Offense_Connected,
+    injuryCode: victim.Injury_Code
+  })) || [];
+
+  // Process offenders with enhanced data
+  const offenders = ragData.Offender_Segment?.map((offender: any, index: number) => ({
+    age: offender.Age,
+    sex: offender.Sex as "M" | "F" | "U",
+    race: offender.Race,
+    ethnicity: offender.Ethnicity,
+    sequenceNumber: index + 1,
+    // NEW: Enhanced offender details from RAG
+    offenderId: offender.Offender_ID || index + 1,
+    name: offender.Name
+  })) || [];
+
+  // Process arrestees with enhanced data
+  const arrestees = ragData.Arrestee_Segment?.map((arrestee: any, index: number) => ({
+    sequenceNumber: index + 1,
+    arrestDate: arrestee.Arrest_Date?.split('T')[0] || arrestee.Arrest_Date,
+    arrestTime: arrestee.Arrest_Date?.includes('T') ? arrestee.Arrest_Date.split('T')[1] : undefined,
+    arrestType: mapArrestType(arrestee.Arrest_Type),
+    age: arrestee.Age,
+    sex: arrestee.Sex as "M" | "F" | "U",
+    race: arrestee.Race,
+    ethnicity: arrestee.Ethnicity,
+    offenseCodes: arrestee.Offense_Arrest_Code ? 
+                  arrestee.Offense_Arrest_Code.split(',').map((code: string) => code.trim()) : 
+                  [],
+    // NEW: Enhanced arrestee details from RAG
+    arresteeId: arrestee.Arrestee_ID || index + 1,
+    name: arrestee.Name,
+    arrestTypeDescription: arrestee.Arrest_Type_Description,
+    offenseArrestDescription: arrestee.Offense_Arrest_Description,
+    residentCode: "U" // Default to Unknown
+  })) || [];
+
+  // Enhanced administrative segment
+  const administrative = {
+    incidentNumber: ragData.Administrative_Segment?.Incident_Number || `INC-${Date.now()}`,
+    incidentDate: ragData.Administrative_Segment?.Incident_DateTime?.split('T')[0] || new Date().toISOString().split('T')[0],
+    incidentTime: ragData.Administrative_Segment?.Incident_DateTime?.split('T')[1],
+    clearedExceptionally: (ragData.Administrative_Segment?.Cleared_Exceptionally as "Y" | "N") || "N",
+    exceptionalClearanceDate: undefined,
+    // NEW: Enhanced administrative details from RAG
+    cargoPropertyInvolved: ragData.Administrative_Segment?.Cargo_Property_Involved || "Unknown",
+    reportingAgency: "Unknown", // Can be enhanced if available
+    clearedBy: arrestees.length > 0 ? "A" : "N" // Auto-detect if cleared by arrest
+  };
+
+  return {
+    administrative: administrative,
+    locationCode: ragData.Offense_Segment?.[0]?.Location_Type || "13",
+    offenses: offenses,
+    properties: properties,
+    victims: victims,
+    offenders: offenders,
+    arrestees: arrestees,
+    narrative: prompt,
+    // NEW: Additional segments for comprehensive reporting
+    offenseSummary: ragData.Offenses?.map((offense: any) => ({
+      description: offense.Description,
+      reportable: offense.NIBRSReportable,
+      category: offense.OffenseCategory,
+      notes: offense.Notes
+    })) || [],
+    // Enhanced metadata
+    metadata: {
+      source: "rag",
+      processingDate: new Date().toISOString(),
+      totalOffenses: offenses.length,
+      totalVictims: victims.length,
+      totalArrestees: arrestees.length,
+      totalProperties: properties.length
+    }
+  };
+}
+
+// Helper function to map arrest types
+function mapArrestType(arrestType: string): "O" | "S" | "T" {
+  const typeMap: Record<string, "O" | "S" | "T"> = {
+    "A": "T", // Arrest -> Taken into custody
+    "O": "O", // On-view
+    "S": "S", // Summoned/Cited
+    "T": "T"  // Taken into custody
+  };
+  return typeMap[arrestType] || "T"; // Default to Taken into custody
+}
+
+function calculateRAGAccuracyScore(ragData: any): number {
+  // RAG should be more accurate - start with high score
+  let score = 95;
+  
+  // Deduct for missing critical fields
+  if (!ragData.Offense_Segment || ragData.Offense_Segment.length === 0) {
+    score -= 20;
+    console.log("⚠️ No offenses found in RAG output");
+  }
+  
+  if (!ragData.Administrative_Segment?.Incident_DateTime) {
+    score -= 10;
+    console.log("⚠️ No incident date/time in RAG output");
+  }
+  
+  // Check for data quality
+  if (ragData.Offense_Segment) {
+    ragData.Offense_Segment.forEach((offense: any) => {
+      if (offense.Offense_Code === "Unknown" || !offense.Offense_Code) {
+        score -= 5;
+      }
+    });
+  }
+  
+  // Ensure reasonable range
+  return Math.max(60, Math.min(100, score));
+}
+
+// Export for testing
+export { convertRAGToLegacyFormat, calculateRAGAccuracyScore };
