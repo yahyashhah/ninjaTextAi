@@ -7,7 +7,7 @@ import { trackUserActivity } from "@/lib/tracking";
 import OpenAI from "openai";
 
 // Increase the maximum duration for this endpoint
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
