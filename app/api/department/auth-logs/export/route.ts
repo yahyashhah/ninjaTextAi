@@ -77,13 +77,13 @@ export async function GET(request: NextRequest) {
     });
 
     // Format data for CSV
-    const csvData = logs.map(log => ({
-      Date: log.createdAt.toISOString(),
-      User: `${log.user.firstName} ${log.user.lastName}`,
-      Email: log.user.email,
-      'Activity Type': log.activity === 'login' || log.activity === 'session_created' ? 'Sign In' : 'Sign Out',
-      'Session ID': log.metadata ? JSON.parse(log.metadata).sessionId || '' : ''
-    }));
+const csvData = logs.map(log => ({
+  Date: log.createdAt.toISOString(),
+  User: log.user ? `${log.user.firstName} ${log.user.lastName}` : 'Unknown User',
+  Email: log.user?.email || 'No email',
+  'Activity Type': log.activity === 'login' || log.activity === 'session_created' ? 'Sign In' : 'Sign Out',
+  'Session ID': log.metadata ? JSON.parse(log.metadata).sessionId || '' : ''
+}));
 
     // Convert to CSV
     const parser = new Parser();
