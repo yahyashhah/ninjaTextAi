@@ -5,30 +5,34 @@ import { redirect } from "next/navigation";
 
 export default async function Page({ searchParams }: { searchParams: { [key: string]: string } }) {
   const { userId } = auth();
-  
   if (userId) {
-    // Check if user is admin
     try {
+      console.log("👤 User is authenticated. Fetching user details...");
       const user = await clerkClient.users.getUser(userId);
-      const isAdmin = !!user.publicMetadata?.admin;
       
-      // Redirect to admin page if user is admin, otherwise to default URL
-      if (isAdmin) {
-        redirect('/admin');
+      const isSuperAdmin = !!user.publicMetadata?.admin;      
+      // Check if user is an admin of any organization (department)
+      const membershipsResponse = await clerkClient.users.getOrganizationMembershipList({ userId });
+      const memberships = membershipsResponse.data || [];
+      
+      const isDepartmentAdmin = memberships.some(membership => 
+      membership.role === "admin" || membership.role === "org:admin"
+      );
+
+      // If user has any admin role, redirect to role selection
+      if (isSuperAdmin || isDepartmentAdmin) {
+        redirect('/role-selector');
       } else {
+        // Regular users go directly to chat
         const redirectUrl = searchParams.redirect_url || '/chat?tutorial=true';
         redirect(redirectUrl);
       }
     } catch (error) {
-      console.error("Error checking admin status:", error);
       const redirectUrl = searchParams.redirect_url || '/chat?tutorial=true';
       redirect(redirectUrl);
     }
   }
 
-  // For non-authenticated users, use a redirect URL that will handle admin detection
-  const redirectUrl = searchParams.redirect_url || '/chat?tutorial=true';
-  
   return (
     <div className="w-full min-h-screen flex items-center justify-center">
       <SignIn 
@@ -38,7 +42,6 @@ export default async function Page({ searchParams }: { searchParams: { [key: str
             card: "w-full"
           }
         }}
-        // Use a special route that will check admin status after sign-in
         redirectUrl="/redirect-handler"
       />
     </div>

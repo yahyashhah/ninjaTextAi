@@ -85,22 +85,6 @@ export default function FeedbackPopup({ isOpen, onClose, onSubmit }: FeedbackPop
         </div>
 
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">How was your overall experience?</label>
-          <select
-            value={experience}
-            onChange={(e) => setExperience(e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded-md"
-          >
-            <option value="">Select your experience</option>
-            <option value="Excellent">Excellent</option>
-            <option value="Good">Good</option>
-            <option value="Neutral">Neutral</option>
-            <option value="Poor">Poor</option>
-            <option value="Terrible">Terrible</option>
-          </select>
-        </div>
-
-        <div className="mb-4">
           <label className="block text-sm font-medium mb-2">What features would you like to see?</label>
           <textarea
             value={wantsToSee}

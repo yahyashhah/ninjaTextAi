@@ -20,34 +20,35 @@ model UserApiLimit {
 }
 
 model User {
-  id               String   @id @default(auto()) @map("_id") @db.ObjectId
-  clerkUserId      String   @unique
-  firstName        String?
-  lastName         String?
-  email            String? @unique
-  profileImageUrl  String?
-  isPro            Boolean  @default(false)
-  isAdmin          Boolean  @default(false) // Add admin field
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  clerkUserId       String   @unique
+  firstName         String?
+  lastName          String?
+  email             String? @unique
+  profileImageUrl   String?
+  isPro             Boolean  @default(false)
+  isAdmin           Boolean  @default(false)
+  departmentAdmin   Boolean  @default(false)
   proAccessGrantedBy String? 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   // Relations
-  apiLimit         UserApiLimit?
-  subscription     UserSubscription?
-  reports          UserReports[]
-  reportsHistory   ReportsHistory[]
-  referralLink     UserReferralLinks?
-  referrals        ReferralReward[] @relation("referrals")
-  referredBy       ReferralReward[] @relation("referredBy")
-  templates        UploadTemplates[]
+  apiLimit          UserApiLimit?
+  subscription      UserSubscription?
+  reports           UserReports[]
+  reportsHistory    ReportsHistory[]
+  referralLink      UserReferralLinks?
+  referrals         ReferralReward[] @relation("referrals")
+  referredBy        ReferralReward[] @relation("referredBy")
+  templates         UploadTemplates[]
   organizationMemberships OrganizationMember[]
-  
-  // Add these new relations for tracking
-  reportEvents     ReportEvent[]
-  userActivities   UserActivity[]
-  systemErrors     SystemError[]
-  feedbacks        Feedback[] 
+  reportEvents      ReportEvent[]
+  userActivities    UserActivity[]
+  systemErrors      SystemError[]
+  feedbacks         Feedback[]
+  departmentReports DepartmentReport[]
+  departmentActivities DepartmentActivityLog[]
 }
 
 model OrganizationSubscription {
@@ -63,21 +64,24 @@ model OrganizationSubscription {
   baseSeats              Int       @default(5)
   extraSeats             Int       @default(0)
   totalSeats             Int       @default(5)
-  
+
   members                OrganizationMember[]
+  organization           Organization? @relation(fields: [clerkOrgId], references: [clerkOrgId])
 }
 
 model OrganizationMember {
-  id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  organizationId String
-  userId         String
-  role           String   @default("member")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId     String
+  userId             String
+  role               String   @default("member")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  organization   OrganizationSubscription @relation(fields: [organizationId], references: [clerkOrgId])
-  user           User                     @relation(fields: [userId], references: [clerkUserId])
-  
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  subscription       OrganizationSubscription? @relation(fields: [organizationId], references: [clerkOrgId]) // New relation
+
+  user               User         @relation(fields: [userId], references: [clerkUserId])
+
   @@unique([organizationId, userId])
 }
 
@@ -150,7 +154,7 @@ model ReportEvent {
   userId          String
   user            User     @relation(fields: [userId], references: [clerkUserId], onDelete: Cascade)
   reportType      String
-  processingTime  Int?     // in milliseconds
+  processingTime  Int?
   success         Boolean
   templateUsed    String?
   error           String?
@@ -166,9 +170,9 @@ model ReportEvent {
 model UserActivity {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   userId    String
-  user      User     @relation(fields: [userId], references: [clerkUserId], onDelete: Cascade)
-  activity  String   // e.g., "login", "report_created", "template_created"
-  metadata  String?  // JSON string for additional data
+  user      User?     @relation(fields: [userId], references: [clerkUserId], onDelete: Cascade)
+  activity  String
+  metadata  String?
   createdAt DateTime @default(now())
 
   @@index([userId])
@@ -178,29 +182,142 @@ model UserActivity {
 
 model SystemError {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  type      String   // e.g., "api_error", "login_error", "report_generation_error"
+  type      String
   message   String
   userId    String?
   user      User?    @relation(fields: [userId], references: [clerkUserId], onDelete: Cascade)
-  metadata  String?  // JSON string for additional error context
+  metadata  String?
   createdAt DateTime @default(now())
 
   @@index([type])
   @@index([createdAt])
   @@index([userId])
 }
+
 model Feedback {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   userId      String
   user        User     @relation(fields: [userId], references: [clerkUserId], onDelete: Cascade)
-  rating      Int      // 1-5 stars
+  rating      Int
   comment     String?
-  experience  String?  // Good, Bad, Neutral
-  wantsToSee  String?  // Features user wants to see
+  experience  String?
+  wantsToSee  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([userId])
   @@index([createdAt])
   @@index([rating])
+}
+
+model Organization {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  clerkOrgId       String   @unique
+  name             String
+  description      String?
+  location         String?
+  type             String?
+  memberCount      Int      @default(0)
+  reportCount      Int      @default(0)
+  lowAccuracyCount Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  subscription     OrganizationSubscription?
+  members          OrganizationMember[]
+  reports          DepartmentReport[]
+  reviewQueue      ReviewQueueItem[]
+  activityLogs     DepartmentActivityLog[]
+  monthlyReports   DepartmentMonthlyReport[]
+
+  @@index([name])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model DepartmentReport {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  clerkUserId      String
+  user             User     @relation(fields: [clerkUserId], references: [clerkUserId])
+  reportType       String
+  title            String
+  content          String
+  nibrsData        String?
+  accuracyScore    Float    @default(100.0)
+  status           String   @default("draft")
+  flagged          Boolean  @default(false)
+  flagReason       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  submittedAt      DateTime?
+  reviewedAt       DateTime?
+
+  reviewQueueItems ReviewQueueItem[]
+
+  @@index([organizationId])
+  @@index([clerkUserId])
+  @@index([reportType])
+  @@index([accuracyScore])
+  @@index([status])
+  @@index([createdAt])
+  @@index([flagged])
+}
+
+model ReviewQueueItem {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  reportId         String
+  report           DepartmentReport @relation(fields: [reportId], references: [id])
+  accuracyScore    Float
+  status           String   @default("pending")
+  assignedTo       String?
+  priority         String   @default("normal")
+  dueDate          DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  resolvedAt       DateTime?
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+  @@index([accuracyScore])
+}
+
+model DepartmentActivityLog {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  userId           String
+  user             User     @relation(fields: [userId], references: [clerkUserId])
+  activityType     String
+  description      String
+  metadata         String?
+  createdAt        DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([activityType])
+  @@index([createdAt])
+}
+
+model DepartmentMonthlyReport {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  month            Int
+  year             Int
+  totalReports     Int      @default(0)
+  totalOfficers    Int      @default(0)
+  averageAccuracy  Float    @default(0.0)
+  offenses         String
+  comparisonData   String
+  generatedAt      DateTime @default(now())
+
+  @@unique([organizationId, month, year])
+  @@index([organizationId])
+  @@index([year, month])
 }
