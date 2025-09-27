@@ -1,4 +1,4 @@
-// route.ts - COMPLETELY UPDATED with professional NIBRS validation and standardized error handling
+// route.ts - FIXED with proper error handling for CorrectionUI
 import { checkApiLimit, increaseAPiLimit } from "@/lib/api-limits";
 import { saveHistoryReport } from "@/lib/history-reports";
 import { checkSubscription } from "@/lib/subscription";
@@ -67,8 +67,13 @@ function getSuggestedFixForTemplateError(error: string): string {
   return "Review the narrative for missing required information";
 }
 
-// Function to calculate accuracy score based on validation results
+// Function to calculate accuracy score with safe data access
 function calculateAccuracyScore(data: any, validationErrors: string[] = [], warnings: string[] = []): number {
+  // FIX: Handle undefined data
+  if (!data) {
+    return 0; // Base score for failed validation
+  }
+  
   let baseScore = 100;
   
   // Deduct for validation errors
@@ -77,12 +82,12 @@ function calculateAccuracyScore(data: any, validationErrors: string[] = [], warn
   // Deduct for warnings
   baseScore -= warnings.length * 5;
   
-  // Deduct for missing critical fields
+  // Deduct for missing critical fields (with safe access)
   if (!data.offenses || data.offenses.length === 0) baseScore -= 20;
   if (!data.victims || data.victims.length === 0) baseScore -= 15;
   if (!data.properties || data.properties.length === 0) baseScore -= 10;
   
-  // Deduct for low confidence mappings
+  // Deduct for low confidence mappings (with safe access)
   if (data.offenses && Array.isArray(data.offenses)) {
     data.offenses.forEach((offense: any) => {
       if (offense.mappingConfidence && offense.mappingConfidence < 0.6) {
@@ -299,33 +304,51 @@ IMPORTANT:
 
     const warnings: string[] = [...validationWarnings];
     
-    // Check offense mapping confidence - FIXED: Add proper type checking
-    if (data.offenses && Array.isArray(data.offenses)) {
+    // FIX: Handle validation failure FIRST before trying to use 'data'
+    if (!ok && errors.length > 0) {
+      console.log("Validation failed - returning error to CorrectionUI");
+      console.log("Errors:", errors);
+      console.log("Data available:", !!data);
+      
+      // FIX: Use safe data access and provide proper fallbacks
+      const errorResponse = NIBRSErrorBuilder.fromSchemaValidation(
+        errors,
+        warnings,
+        data || {},  // Provide empty object if data is undefined
+        correctionContext || {}  // Provide empty object if correctionContext is undefined
+      );
+      
+      console.log("Error response being sent to frontend:", errorResponse);
+      return NextResponse.json(errorResponse, { status: 400 });
+    }
+
+    // FIX: Only process offenses if data exists and validation passed
+    if (data && data.offenses && Array.isArray(data.offenses)) {
       data.offenses.forEach((offense: any) => {
         if (offense.mappingConfidence && offense.mappingConfidence < 0.6) {
+          warnings.push(`Low confidence in offense mapping: ${offense.code} (confidence: ${offense.mappingConfidence})`);
+        } else if (offense.mappingConfidence && offense.mappingConfidence < 0.8) {
           warnings.push(`Low confidence in offense mapping: ${offense.code} (confidence: ${offense.mappingConfidence})`);
         }
       });
     }
 
-    // Calculate accuracy score
-    const accuracyScore = calculateAccuracyScore(data, errors, warnings);
+    // FIX: Safe accuracy score calculation
+    const accuracyScore = calculateAccuracyScore(data || {}, errors, warnings);
     console.log("Calculated accuracy score:", accuracyScore);
 
-    if (!ok && errors.length > 0) {
-      const errorResponse = NIBRSErrorBuilder.fromSchemaValidation(
-        errors,
-        warnings,
-        data,
-        correctionContext
-      );
-      return NextResponse.json(errorResponse, { status: 400 });
+    // FIX: Safe template validation - only if data exists
+    let templateErrors: string[] = [];
+    if (data) {
+      templateErrors = validateWithTemplate(data);
+    } else {
+      templateErrors = ["Validation failed: No structured data available for template validation"];
+      console.warn("No data available for template validation");
     }
 
-    // Also run template-based validation (business rules)
-    const templateErrors = validateWithTemplate(data);
     if (templateErrors.length > 0) {
-      // Create proper correction context for template errors
+      console.log("Template validation errors:", templateErrors);
+      
       const templateCorrectionContext = {
         missingVictims: correctionContext?.missingVictims || [],
         ambiguousProperties: correctionContext?.ambiguousProperties || [],
@@ -333,7 +356,7 @@ IMPORTANT:
         multiOffenseIssues: correctionContext?.multiOffenseIssues || [],
         templateErrors: templateErrors.map(error => ({
           message: error,
-          offenseCode: data.offenses?.[0]?.code,
+          offenseCode: data?.offenses?.[0]?.code, // Safe optional chaining
           suggestedFix: getSuggestedFixForTemplateError(error)
         }))
       };
@@ -341,14 +364,24 @@ IMPORTANT:
       const errorResponse = NIBRSErrorBuilder.fromTemplateValidation(
         templateErrors,
         warnings,
-        data,
+        data || {},
         templateCorrectionContext
       );
       
       return NextResponse.json(errorResponse, { status: 400 });
     }
 
-    // Build XML if everything is good
+    // FIX: Only build XML if everything is valid and data exists
+    if (!data) {
+      console.error("No valid data available for XML generation");
+      const errorResponse: StandardErrorResponse = {
+        error: "No valid NIBRS data available after validation",
+        suggestions: ["Please check the input narrative for completeness"],
+        nibrsData: {}
+      };
+      return NextResponse.json(errorResponse, { status: 400 });
+    }
+
     const xml = buildNIBRSXML(data);
 
     console.log('🚀 Attempting to submit report to department system...');

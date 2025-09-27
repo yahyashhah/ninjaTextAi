@@ -1,5 +1,6 @@
+// components/reports/sub-components/PromptInput.tsx
 import { useForm } from "react-hook-form";
-import { ArrowUp, ClipboardList, Upload, X, Mic } from "lucide-react";
+import { ArrowUp, ClipboardList, Upload, X, Mic, Type } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Progress } from "@/components/ui/progress";
@@ -7,7 +8,7 @@ import { useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
-interface InputSectionProps {
+interface PromptInputProps {
   form: any;
   onSubmit: (values: any) => void;
   prompt: string;
@@ -24,6 +25,10 @@ interface InputSectionProps {
   handleDrop: (e: React.DragEvent<HTMLDivElement>) => void;
   selectedFile: File | null;
   setSelectedFile: (file: File | null) => void;
+  // New props for mode switching
+  inputMode: 'typing' | 'recording' | 'ready-to-record';
+  onSwitchMode: (mode: 'typing' | 'recording') => void;
+  onWritingStart: () => void;
 }
 
 const PromptInput = ({
@@ -43,16 +48,79 @@ const PromptInput = ({
   handleDrop,
   selectedFile,
   setSelectedFile,
-}: InputSectionProps) => {
+  inputMode,
+  onSwitchMode,
+  onWritingStart,
+}: PromptInputProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
 
+  // Detect when user starts typing or focuses on textarea
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newText = e.target.value;
+    setPrompt(newText);
+    
+    // Auto-resize
+    e.target.style.height = "auto";
+    e.target.style.height = `${e.target.scrollHeight}px`;
+  };
+
+  const handleTextFocus = () => {
+    // When user focuses on textarea, switch to typing mode and show template
+    if (inputMode !== 'typing') {
+      onSwitchMode('typing');
+    }
+    onWritingStart();
+  };
+
+  // Helper function to check if mode buttons should be shown
+  const shouldShowModeButtons = (): boolean => {
+  // Show mode buttons when minimal text is entered or no text
+  return (!prompt.trim() || prompt.trim().length < 10) && !isLoading && !isUploading;
+};
+
+  // Helper function to get current tip text
+  const getCurrentTip = (): string => {
+    if (inputMode === 'recording' || inputMode === 'ready-to-record') {
+      return recordingTip;
+    }
+    return defaultTip;
+  };
+
   return (
     <>
       <div className="relative">
+        {shouldShowModeButtons() && (
+  <div className="max-w-4xl mx-auto mb-3 flex gap-2 justify-center">
+    <Button
+      variant={inputMode === 'typing' ? "default" : "outline"}
+      size="sm"
+      onClick={() => {
+        onSwitchMode('typing');
+        onWritingStart();
+      }}
+      className="flex items-center gap-2"
+      disabled={isLoading || isUploading}
+    >
+      <Type className="h-4 w-4" />
+      Type Report
+    </Button>
+    <Button
+      variant={inputMode === 'recording' || inputMode === 'ready-to-record' ? "default" : "outline"}
+      size="sm"
+      onClick={() => onSwitchMode('recording')}
+      className="flex items-center gap-2"
+      disabled={isLoading || isUploading}
+    >
+      <Mic className="h-4 w-4" />
+      Dictate Report
+    </Button>
+  </div>
+)}
+
         {/* Hidden file input */}
         <input
           type="file"
@@ -80,11 +148,8 @@ const PromptInput = ({
                       disabled={isLoading || isUploading}
                       placeholder="Type your report, speak using the mic, or upload an audio recording"
                       value={prompt}
-                      onChange={(e) => {
-                        setPrompt(e.target.value);
-                        e.target.style.height = "auto";
-                        e.target.style.height = `${e.target.scrollHeight}px`;
-                      }}
+                      onChange={handleTextChange}
+                      onFocus={handleTextFocus}
                       rows={3}
                       style={{ minHeight: "80px", maxHeight: "300px" }}
                     />
@@ -96,27 +161,27 @@ const PromptInput = ({
             {/* Right side buttons */}
             <div className="flex items-center gap-2">
               <TooltipProvider>
-  <Tooltip>
-    <TooltipTrigger asChild>
-      <Button
-        type="button"
-        onClick={handleUploadClick}
-        variant="ghost"
-        size="icon"
-        className={cn(
-          "rounded-full hover:bg-blue-50",
-          isLoading || isUploading ? "opacity-50 cursor-not-allowed" : ""
-        )}
-        disabled={isLoading || isUploading}
-      >
-        <Upload className="h-4 w-4 text-gray-600" />
-      </Button>
-    </TooltipTrigger>
-    <TooltipContent side="top" className="bg-gray-900 text-white text-xs rounded-md px-2 py-1">
-      Upload Audio
-    </TooltipContent>
-  </Tooltip>
-</TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      onClick={handleUploadClick}
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        "rounded-full hover:bg-blue-50",
+                        isLoading || isUploading ? "opacity-50 cursor-not-allowed" : ""
+                      )}
+                      disabled={isLoading || isUploading}
+                    >
+                      <Upload className="h-4 w-4 text-gray-600" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-gray-900 text-white text-xs rounded-md px-2 py-1">
+                    Upload Audio
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
 
               <Button
                 className="bg-blue-600 hover:bg-blue-700 text-white rounded-full flex-shrink-0"
@@ -190,7 +255,7 @@ const PromptInput = ({
         <div className="flex items-center justify-center space-x-2">
           <ClipboardList className="h-4 w-4 text-gray-400" />
           <p className="text-xs xl:text-sm text-gray-500 text-center">
-            {showRecordingControls ? recordingTip : defaultTip}
+            {getCurrentTip()}
           </p>
         </div>
       </div>

@@ -19,6 +19,7 @@ import RecordingControls from "./RecordingControls";
 import PromptInput from "./PromptInput";
 import CorrectionUI from "./CorrectionUI";
 import DictationTemplate from "./DictationTemplate";
+import WritingTemplate from "./WritingTemplate";
 import ReviewModal from "./ReviewModal";
 
 export type Template = {
@@ -84,9 +85,17 @@ const BaseReport = ({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [correctionData, setCorrectionData] = useState<CorrectionData | null>(null);
   
-  // New states for dictation template
+  // New states for templates and modes
   const [showDictationTemplate, setShowDictationTemplate] = useState(false);
-  const [reviewModal, setReviewModal] = useState<{isOpen: boolean; fieldName: string; options: string[]}>({
+  const [inputMode, setInputMode] = useState<'typing' | 'recording' | 'ready-to-record'>('typing');
+  const [isWriting, setIsWriting] = useState(false);
+  const [reviewModal, setReviewModal] = useState<{
+    isOpen: boolean; 
+    fieldName: string; 
+    options: string[];
+    currentSegment?: string;
+    currentField?: string;
+  }>({
     isOpen: false,
     fieldName: "",
     options: []
@@ -105,7 +114,7 @@ const BaseReport = ({
     },
   });
 
-  // Complete field options for when officer says "review"
+  // Field options for DictationTemplate buttons
   const fieldOptions = {
     incidentType: ["Burglary", "Assault", "Theft", "Robbery", "Vandalism", "Domestic Violence", "Drug Offense", "Traffic Incident", "Other"],
     victimGender: ["Male", "Female", "Unknown"],
@@ -157,210 +166,27 @@ const BaseReport = ({
     ].join(':');
   };
 
-  // Improved function to identify current field being dictated
-  // Replace the identifyCurrentField function in BaseReport with this:
-const identifyCurrentField = (currentText: string, transcriptWithReview: string) => {
-  if (!currentText || currentText.length < 5) return null;
-  
-  console.log('Identifying field for text:', currentText);
-  console.log('Full transcript:', transcriptWithReview);
-  
-  const text = currentText.toLowerCase();
-  const fullText = transcriptWithReview.toLowerCase();
-  
-  // Extract the last sentence or phrase before "review"
-  const sentences = fullText.split(/[.!?]+/);
-  const lastSentence = sentences[sentences.length - 2] || sentences[sentences.length - 1] || ''; // Sentence before review
-  const words = lastSentence.trim().split(/\s+/);
-  
-  console.log('Last sentence before review:', lastSentence);
-  console.log('Words in last sentence:', words);
-  
-  // Field detection with context patterns - ordered by specificity
-  const fieldPatterns = [
-    // High specificity patterns (exact phrases)
-    {
-      field: "incidentType",
-      patterns: [
-        { trigger: "in reference to", context: 5 },
-        { trigger: "type of incident", context: 3 },
-        { trigger: "regarding", context: 3 }
-      ],
-      test: (sentence: string) => sentence.includes("reference to") || sentence.includes("type of incident")
-    },
-    {
-      field: "victimGender",
-      patterns: [
-        { trigger: "year-old", context: 2 },
-        { trigger: "male", context: 1 },
-        { trigger: "female", context: 1 }
-      ],
-      test: (sentence: string) => sentence.includes("year-old") || sentence.includes("male") || sentence.includes("female")
-    },
-    {
-      field: "race",
-      patterns: [
-        { trigger: "race is", context: 2 },
-        { trigger: "race", context: 3 }
-      ],
-      test: (sentence: string) => sentence.includes("race")
-    },
-    {
-      field: "ethnicity",
-      patterns: [
-        { trigger: "ethnicity", context: 3 }
-      ],
-      test: (sentence: string) => sentence.includes("ethnicity")
-    },
-    {
-      field: "relationship",
-      patterns: [
-        { trigger: "relationship", context: 5 },
-        { trigger: "between victim", context: 3 }
-      ],
-      test: (sentence: string) => sentence.includes("relationship") || sentence.includes("victim and offender")
-    },
-    {
-      field: "offenseStatus",
-      patterns: [
-        { trigger: "offense was", context: 2 },
-        { trigger: "attempted", context: 1 },
-        { trigger: "completed", context: 1 }
-      ],
-      test: (sentence: string) => sentence.includes("offense was") || sentence.includes("attempted") || sentence.includes("completed")
-    },
-    {
-      field: "injuryType",
-      patterns: [
-        { trigger: "sustained", context: 3 },
-        { trigger: "injury", context: 2 }
-      ],
-      test: (sentence: string) => sentence.includes("sustained") || sentence.includes("injury")
-    },
-    {
-      field: "forceUsed",
-      patterns: [
-        { trigger: "used", context: 3 },
-        { trigger: "weapon", context: 2 },
-        { trigger: "force", context: 2 }
-      ],
-      test: (sentence: string) => sentence.includes("used") || sentence.includes("weapon") || sentence.includes("force")
-    },
-    {
-      field: "propertyLoss",
-      patterns: [
-        { trigger: "loss type", context: 3 },
-        { trigger: "stolen", context: 1 },
-        { trigger: "damaged", context: 1 }
-      ],
-      test: (sentence: string) => sentence.includes("loss type") || sentence.includes("stolen") || sentence.includes("damaged")
-    },
-    {
-      field: "arrestStatus",
-      patterns: [
-        { trigger: "arrested", context: 2 },
-        { trigger: "not arrested", context: 2 }
-      ],
-      test: (sentence: string) => sentence.includes("arrested")
-    },
-    {
-      field: "bodyCam",
-      patterns: [
-        { trigger: "body cam", context: 3 },
-        { trigger: "camera", context: 2 }
-      ],
-      test: (sentence: string) => sentence.includes("body cam") || sentence.includes("camera")
-    },
-    
-    // Medium specificity - field mentions
-    {
-      field: "location",
-      patterns: [
-        { trigger: "dispatched to", context: 4 },
-        { trigger: "arrived at", context: 3 }
-      ],
-      test: (sentence: string) => sentence.includes("dispatched") || sentence.includes("arrived")
-    },
-    {
-      field: "victimName",
-      patterns: [
-        { trigger: "contact with", context: 3 },
-        { trigger: "victim name", context: 2 }
-      ],
-      test: (sentence: string) => sentence.includes("contact with") || sentence.includes("victim name")
-    },
-    {
-      field: "victimAge",
-      patterns: [
-        { trigger: "year-old", context: 2 },
-        { trigger: "age", context: 3 }
-      ],
-      test: (sentence: string) => sentence.includes("year-old") || sentence.includes("age")
-    }
-  ];
-
-  // First, try to match based on the last sentence context
-  for (const fieldData of fieldPatterns) {
-    if (fieldData.test(lastSentence)) {
-      console.log('Matched field by sentence context:', fieldData.field);
-      return {
-        field: fieldData.field,
-        options: fieldOptions[fieldData.field as keyof typeof fieldOptions] || ["Unknown", "Not specified"]
-      };
-    }
-  }
-
-  // If no sentence context match, try word-based matching
-  for (const fieldData of fieldPatterns) {
-    for (const pattern of fieldData.patterns) {
-      if (lastSentence.includes(pattern.trigger)) {
-        console.log('Matched field by word pattern:', fieldData.field, 'with trigger:', pattern.trigger);
-        return {
-          field: fieldData.field,
-          options: fieldOptions[fieldData.field as keyof typeof fieldOptions] || ["Unknown", "Not specified"]
-        };
-      }
-    }
-  }
-
-  // Final fallback - check for keywords in recent words
-  const recentWords = words.slice(-5); // Last 5 words of the sentence
-  const keywordMap: { [key: string]: string } = {
-    'male': 'victimGender', 'female': 'victimGender',
-    'attempted': 'offenseStatus', 'completed': 'offenseStatus',
-    'stolen': 'propertyLoss', 'damaged': 'propertyLoss', 'recovered': 'propertyLoss',
-    'arrested': 'arrestStatus', 'weapon': 'forceUsed', 'injury': 'injuryType',
-    'race': 'race', 'ethnicity': 'ethnicity', 'relationship': 'relationship',
-    'camera': 'bodyCam', 'dispatched': 'location', 'arrived': 'location'
-  };
-
-  for (const word of recentWords) {
-    if (keywordMap[word]) {
-      console.log('Matched field by keyword:', keywordMap[word], 'from word:', word);
-      return {
-        field: keywordMap[word],
-        options: fieldOptions[keywordMap[word] as keyof typeof fieldOptions] || ["Unknown", "Not specified"]
-      };
-    }
-  }
-
-  console.log('No field detected for text:', lastSentence);
-  return null;
+  // Start recording handler - ONLY shows recording controls, doesn't start recording immediately
+  const prepareRecording = () => {
+  setInputMode('ready-to-record');
+  setShowRecordingControls(true);
+  setShowDictationTemplate(false);
 };
 
-  // Start recording handler
+  // Actually start recording when user clicks "Start Recording"
   const startRecording = () => {
-  lastTranscriptRef.current = "";
-  startListening();
-  setIsListening(true);
-  setIsPaused(false);
-  setRecordingTime(0);
-  setShowRecordingControls(false); // Hide the start button
-  setShowDictationTemplate(true); // Show template with integrated controls
-  timerRef.current = setInterval(() => {
-    setRecordingTime(prev => prev + 1);
-  }, 1000);
-};
+    lastTranscriptRef.current = "";
+    startListening();
+    setIsListening(true);
+    setIsPaused(false);
+    setRecordingTime(0);
+    setShowRecordingControls(false);
+    setShowDictationTemplate(true);
+    setInputMode('recording');
+    timerRef.current = setInterval(() => {
+      setRecordingTime(prev => prev + 1);
+    }, 1000);
+  };
 
   // Pause recording handler
   const pauseRecording = () => {
@@ -382,17 +208,17 @@ const identifyCurrentField = (currentText: string, transcriptWithReview: string)
   };
 
   // Stop recording handler
-  // In BaseReport, update the stopRecording function:
-const stopRecording = () => {
-  stopListening();
-  setIsListening(false);
-  setIsPaused(false);
-  setShowRecordingControls(false);
-  setShowDictationTemplate(false); // Hide template when stopped
-  if (timerRef.current) {
-    clearInterval(timerRef.current);
-  }
-};
+  const stopRecording = () => {
+    stopListening();
+    setIsListening(false);
+    setIsPaused(false);
+    setShowRecordingControls(false);
+    setShowDictationTemplate(false);
+    setInputMode('typing');
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+  };
 
   // Handle file upload
   const handleFileUpload = async (file: File) => {
@@ -488,20 +314,95 @@ const stopRecording = () => {
     form.handleSubmit(onSubmit)();
   };
 
-  // Handle field review requests
+  // Handle field review requests from DictationTemplate buttons
   const handleFieldReview = (fieldName: string, options: string[]) => {
     setReviewModal({
       isOpen: true,
-      fieldName,
-      options: Array.isArray(options) ? options : ["Unknown", "Not specified"]
+      fieldName: "fieldSelection",
+      options: options,
+      currentField: fieldName
     });
   };
 
-  // Handle review selection
-  const handleReviewSelect = (selectedOption: string) => {
-    const newText = `${prompt} ${selectedOption}`;
-    setPrompt(newText);
-    setReviewModal({ isOpen: false, fieldName: "", options: [] });
+  // Handle review selection with hierarchical support
+  const handleReviewSelect = (selectedOption: string, segment?: string, field?: string) => {
+    let newText = selectedOption;
+    
+    // Add context if we have segment and field info
+    if (segment && field) {
+      // Format the insertion based on the field type
+      newText = formatFieldInsertion(segment, field, selectedOption);
+    } else if (field) {
+      // Direct field selection from DictationTemplate buttons
+      newText = formatFieldInsertion('direct', field, selectedOption);
+    }
+    
+    const updatedPrompt = `${prompt} ${newText}`.trim();
+    setPrompt(updatedPrompt);
+    
+    // Close the modal and reset state
+    setReviewModal({ 
+      isOpen: false, 
+      fieldName: "", 
+      options: [],
+      currentSegment: undefined,
+      currentField: undefined
+    });
+  };
+
+  // Helper function to format field insertions appropriately
+  const formatFieldInsertion = (segment: string, field: string, value: string): string => {
+    // Custom formatting based on field type
+    const formattingRules: { [key: string]: string } = {
+      'incidentType': `a ${value} incident`,
+      'victimAge': `a ${value}`,
+      'victimGender': `${value}`,
+      'offenseStatus': `${value}`,
+      'arrestStatus': `${value}`,
+      'bodyCam': `${value}`,
+      'location': `${value}`,
+      'race': `${value}`,
+      'ethnicity': `${value}`,
+      'relationship': `${value}`,
+      'injuryType': `${value} injury`,
+      'forceUsed': `${value}`,
+      'propertyLoss': `${value}`,
+      'victimName': `${value}`,
+      'suspectAge': `${value}`,
+      'statute': `${value}`,
+      'offenseDescription': `${value}`,
+      'clothing': `${value} clothing`,
+      'physicalDescription': `${value}`,
+      'offenderCount': `${value} offender(s)`,
+      'propertyItems': `${value}`,
+      'propertyDescription': `${value}`,
+      'propertyValue': `${value}`,
+      'arrestType': `${value}`,
+      'charges': `${value}`
+    };
+    
+    return formattingRules[field] || value;
+  };
+
+  // Handle snippet insertion for writing mode
+  const handleInsertSnippet = (snippet: string) => {
+    setPrompt(prev => {
+      if (textareaRef.current) {
+        const textarea = textareaRef.current;
+        const startPos = textarea.selectionStart;
+        const endPos = textarea.selectionEnd;
+        const newText = prev.substring(0, startPos) + snippet + prev.substring(endPos);
+        
+        // Set cursor position after inserted text
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(startPos + snippet.length, startPos + snippet.length);
+        }, 0);
+        
+        return newText;
+      }
+      return prev + snippet;
+    });
   };
 
   // Clean up timer on unmount
@@ -513,68 +414,44 @@ const stopRecording = () => {
     };
   }, []);
 
-  // Replace the transcript useEffect in BaseReport with this:
-useEffect(() => {
-  if (isListening && transcript) {
-    const currentText = transcript.toLowerCase();
-    const lastText = lastTranscriptRef.current.toLowerCase();
-    
-    // Improved "review" detection - check if "review" was just spoken
-    if (currentText.includes(' review') && !lastText.includes(' review')) {
-      console.log('=== REVIEW DETECTED ===');
-      console.log('Current transcript:', transcript);
-      console.log('Previous transcript:', lastTranscriptRef.current);
+  // Simplified review detection - just look for the word "review"
+  useEffect(() => {
+    if (isListening && transcript) {
+      const currentText = transcript.toLowerCase();
+      const lastText = lastTranscriptRef.current.toLowerCase();
       
-      // Use a timeout to ensure the speech is fully processed
-      setTimeout(() => {
-        // Get the text that was spoken before "review"
-        const textBeforeReview = transcript.replace(/\s*review.*$/i, '').trim();
-        console.log('Text before review:', textBeforeReview);
+      // Simple "review" detection
+      if (currentText.includes(' review') && !lastText.includes(' review')) {
+        console.log('=== REVIEW DETECTED ===');
         
-        if (textBeforeReview) {
-          const currentField = identifyCurrentField(textBeforeReview, transcript);
-          
-          if (currentField) {
-            console.log('🎯 Detected field for review:', currentField.field);
-            console.log('📋 Available options:', currentField.options);
-            
-            handleFieldReview(currentField.field, currentField.options);
-            
-            // Clean the transcript by removing "review" to avoid duplication
-            const cleanTranscript = transcript.replace(/\s*review\b\s*/gi, ' ').trim();
-            if (cleanTranscript !== transcript) {
-              setPrompt(prev => {
-                const newPrompt = prev + ' ' + cleanTranscript;
-                console.log('Updated prompt:', newPrompt);
-                return newPrompt;
-              });
-              lastTranscriptRef.current = cleanTranscript;
-              return;
-            }
-          } else {
-            console.log('❌ No specific field detected for review');
-            // Show generic options if no specific field detected
-            handleFieldReview('general', fieldOptions.general);
-          }
-        } else {
-          console.log('⚠️ No text before review found');
-          handleFieldReview('general', fieldOptions.general);
+        // Show the hierarchical review modal starting with segment selection
+        setReviewModal({
+          isOpen: true,
+          fieldName: "segmentSelection",
+          options: []
+        });
+        
+        // Clean the transcript by removing "review" to avoid duplication
+        const cleanTranscript = transcript.replace(/\s*review\b\s*/gi, ' ').trim();
+        if (cleanTranscript !== transcript) {
+          setPrompt(prev => prev + ' ' + cleanTranscript);
+          lastTranscriptRef.current = cleanTranscript;
+          return;
         }
-      }, 300); // Slightly longer delay for better detection
-    }
-    
-    // Normal transcript processing
-    if (transcript !== lastTranscriptRef.current) {
-      if (lastTranscriptRef.current && transcript.startsWith(lastTranscriptRef.current)) {
-        const newContent = transcript.slice(lastTranscriptRef.current.length);
-        setPrompt(prev => prev + newContent);
-      } else {
-        setPrompt(transcript);
       }
-      lastTranscriptRef.current = transcript;
+      
+      // Normal transcript processing
+      if (transcript !== lastTranscriptRef.current) {
+        if (lastTranscriptRef.current && transcript.startsWith(lastTranscriptRef.current)) {
+          const newContent = transcript.slice(lastTranscriptRef.current.length);
+          setPrompt(prev => prev + newContent);
+        } else {
+          setPrompt(transcript);
+        }
+        lastTranscriptRef.current = transcript;
+      }
     }
-  }
-}, [transcript, isListening]);
+  }, [transcript, isListening]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -688,6 +565,10 @@ useEffect(() => {
       setPrompt("");
       form.reset();
       setSelectedTemplate(null);
+      setInputMode('typing');
+      setShowDictationTemplate(false);
+      // setIsWriting(false);
+      setShowRecordingControls(false);
 
     } catch (error: any) {
       console.error("Submission error:", error);
@@ -764,6 +645,8 @@ useEffect(() => {
         isOpen={reviewModal.isOpen}
         fieldName={reviewModal.fieldName}
         options={reviewModal.options}
+        currentSegment={reviewModal.currentSegment}
+        currentField={reviewModal.currentField}
         onSelect={handleReviewSelect}
         onClose={() => setReviewModal({ isOpen: false, fieldName: "", options: [] })}
       />
@@ -779,22 +662,31 @@ useEffect(() => {
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        {/* Dictation Template */}
-        <DictationTemplate
-  isVisible={showDictationTemplate}
-  onFieldReview={handleFieldReview}
-  completedSections={completedSections}
-  fieldOptions={fieldOptions}
-  // New recording control props
-  isRecording={isListening && !isPaused}
-  isPaused={isPaused}
-  recordingTime={recordingTime}
-  formatTime={formatTime}
-  onPauseRecording={pauseRecording}
-  onResumeRecording={resumeRecording}
-  onSubmitRecording={submitRecording}
-  onStopRecording={stopRecording} // Add this new prop
-/>
+        {inputMode === 'typing' && !message && !isLoading && (
+  <WritingTemplate
+    isVisible={true}
+    onInsertSnippet={handleInsertSnippet}
+    onFieldHelp={handleFieldReview}
+  />
+)}
+
+        {/* Show DictationTemplate only when actively recording */}
+        {inputMode === 'recording' && (
+          <DictationTemplate
+            isVisible={showDictationTemplate}
+            onFieldReview={handleFieldReview}
+            completedSections={completedSections}
+            fieldOptions={fieldOptions}
+            isRecording={isListening && !isPaused}
+            isPaused={isPaused}
+            recordingTime={recordingTime}
+            formatTime={formatTime}
+            onPauseRecording={pauseRecording}
+            onResumeRecording={resumeRecording}
+            onSubmitRecording={submitRecording}
+            onStopRecording={stopRecording}
+          />
+        )}
 
         {isLoading ? (
           <div className="max-w-4xl mx-auto h-64 flex flex-col items-center justify-center rounded-lg">
@@ -856,7 +748,8 @@ useEffect(() => {
 
       {/* Input Section with Recording Controls */}
       <div className="bg-white px-4 py-3 border-t relative">
-        {!showDictationTemplate && !message && !isLoading && (
+        {/* Show RecordingControls when in 'ready-to-record' mode */}
+        {inputMode === 'ready-to-record' && !message && !isLoading && (
           <RecordingControls
             showRecordingControls={showRecordingControls}
             isPaused={isPaused}
@@ -894,6 +787,21 @@ useEffect(() => {
             handleDrop={handleDrop}
             selectedFile={selectedFile}
             setSelectedFile={setSelectedFile}
+            // New props for mode switching
+            inputMode={inputMode}
+            onSwitchMode={(mode) => {
+              if (mode === 'recording') {
+                prepareRecording(); // Show recording controls but don't start recording yet
+              } else {
+                setInputMode('typing');
+                setShowRecordingControls(false);
+                // setIsWriting(true);
+              }
+            }}
+            onWritingStart={() => {
+  setInputMode('typing');
+  setShowRecordingControls(false);
+}}
           />
         )}
       </div>
