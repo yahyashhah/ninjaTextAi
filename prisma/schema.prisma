@@ -145,6 +145,11 @@ model UploadTemplates {
   instructions String?
   examples     String?
   reportTypes  String[]
+  
+  requiredFields String[]
+  fieldDefinitions Json?
+  strictMode      Boolean @default(true)
+  
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }

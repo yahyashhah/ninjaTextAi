@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import * as Label from "@radix-ui/react-label";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Plus, Trash2 } from "lucide-react";
 import axios from "axios";
 import { useRouter } from 'next/navigation';
 
@@ -11,6 +11,18 @@ interface FormValues {
   instructions: string;
   reportType: string[];
   examples: string;
+  requiredFields: string[];
+  fieldDefinitions: { [key: string]: any };
+  strictMode: boolean;
+}
+
+interface FieldDefinition {
+  label: string;
+  description: string;
+  required: boolean;
+  type: string;
+  validation?: string;
+  example?: string;
 }
 
 const Create_template = () => {
@@ -19,6 +31,17 @@ const Create_template = () => {
     instructions: "",
     reportType: [],
     examples: "",
+    requiredFields: [],
+    fieldDefinitions: {},
+    strictMode: true
+  });
+
+  const [newField, setNewField] = useState({
+    name: "",
+    label: "",
+    description: "",
+    required: true,
+    type: "text"
   });
 
   const router = useRouter();
@@ -42,6 +65,46 @@ const Create_template = () => {
     }));
   };
 
+  const addField = () => {
+    if (!newField.name.trim() || !newField.label.trim()) return;
+
+    const fieldKey = newField.name.toLowerCase().replace(/\s+/g, '_');
+    
+    setFormValues(prev => ({
+      ...prev,
+      requiredFields: [...prev.requiredFields, fieldKey],
+      fieldDefinitions: {
+        ...prev.fieldDefinitions,
+        [fieldKey]: {
+          label: newField.label,
+          description: newField.description,
+          required: newField.required,
+          type: newField.type,
+          example: newField.type === 'datetime' ? 'MM/DD/YYYY HH:MM' : 'Example value'
+        }
+      }
+    }));
+
+    // Reset new field form
+    setNewField({
+      name: "",
+      label: "",
+      description: "",
+      required: true,
+      type: "text"
+    });
+  };
+
+  const removeField = (fieldKey: string) => {
+    setFormValues(prev => ({
+      ...prev,
+      requiredFields: prev.requiredFields.filter(f => f !== fieldKey),
+      fieldDefinitions: Object.fromEntries(
+        Object.entries(prev.fieldDefinitions).filter(([key]) => key !== fieldKey)
+      )
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -51,6 +114,9 @@ const Create_template = () => {
         instructions: formValues.instructions,
         examples: formValues.examples,
         reportTypes: formValues.reportType,
+        requiredFields: formValues.requiredFields,
+        fieldDefinitions: formValues.fieldDefinitions,
+        strictMode: formValues.strictMode
       });
       router.push("/templates_page");
     } catch (error) {
@@ -73,24 +139,29 @@ const Create_template = () => {
     "Supplemental report"
   ];
 
+  const fieldTypes = ["text", "datetime", "number", "array", "boolean"];
+
   return (
-    <div className="flex flex-col h-[calc(100vh-74px)] bg-gray-100">
-      <div className="w-full flex justify-between items-center p-4 px-6 bg-white border border-slate-300 rounded-b-lg">
+    <div className="flex flex-col min-h-screen bg-gray-100">
+      <div className="w-full flex justify-between items-center p-4 px-6 bg-white border border-slate-300 rounded-b-lg sticky top-0 z-10">
         <button 
           onClick={() => router.back()} 
           className="flex items-center gap-2 text-gray-700 hover:text-blue-600 transition-colors"
         >
           <ChevronLeft />        
+          Back
         </button>
+        <h1 className="text-lg font-semibold">Create Strict Template</h1>
+        <div className="w-20"></div> {/* Spacer for balance */}
       </div>
       
-      <div className='w-full p-4 px-6 bg-white shadow-md rounded-b-lg'>
-        <form onSubmit={handleSubmit} className="space-y-4 w-full mx-auto p-4 border rounded-lg">
+      <div className='flex-1 p-4 px-6'>
+        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto space-y-6 p-6 bg-white border rounded-lg shadow-sm">
           
           {/* Template Name */}
           <div className="flex flex-col gap-2">
             <Label.Root htmlFor="templateName" className="text-sm font-medium text-gray-700">
-              Template Name
+              Template Name *
             </Label.Root>
             <input
               id="templateName"
@@ -99,39 +170,159 @@ const Create_template = () => {
               value={formValues.templateName}
               onChange={handleInputChange}
               required
-              className="p-2 border rounded-lg w-full resize-none focus:outline-none focus:ring focus:ring-indigo-500"
+              className="p-2 border rounded-lg w-full focus:outline-none focus:ring focus:ring-indigo-500"
             />
+          </div>
+
+          {/* Strict Mode Toggle */}
+          <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+            <input
+              type="checkbox"
+              id="strictMode"
+              checked={formValues.strictMode}
+              onChange={(e) => setFormValues(prev => ({ ...prev, strictMode: e.target.checked }))}
+              className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+            />
+            <Label.Root htmlFor="strictMode" className="text-sm font-medium text-gray-700">
+              Enable Strict Validation
+            </Label.Root>
+            <TooltipIcon 
+              content="When enabled, the system will validate that all required fields are present in the narrative before generating the report."
+            />
+          </div>
+
+          {/* Required Fields Section */}
+          <div className="border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-4">
+              <Label.Root className="text-sm font-medium text-gray-700">
+                Required Fields
+              </Label.Root>
+              <TooltipIcon 
+                content="Define specific fields that must be present in the narrative. The system will prompt users for missing information."
+              />
+            </div>
+
+            {/* Add New Field Form */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-gray-50 rounded mb-4">
+              <div>
+                <label className="text-xs font-medium text-gray-600">Field Name *</label>
+                <input
+                  value={newField.name}
+                  onChange={(e) => setNewField(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g., incident_time"
+                  className="w-full p-2 border rounded text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Display Label *</label>
+                <input
+                  value={newField.label}
+                  onChange={(e) => setNewField(prev => ({ ...prev, label: e.target.value }))}
+                  placeholder="e.g., Incident Time"
+                  className="w-full p-2 border rounded text-sm"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-xs font-medium text-gray-600">Description</label>
+                <input
+                  value={newField.description}
+                  onChange={(e) => setNewField(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="e.g., Exact date and time of incident"
+                  className="w-full p-2 border rounded text-sm"
+                />
+              </div>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={newField.required}
+                    onChange={(e) => setNewField(prev => ({ ...prev, required: e.target.checked }))}
+                    className="h-3 w-3"
+                  />
+                  Required Field
+                </label>
+                <select 
+                  value={newField.type}
+                  onChange={(e) => setNewField(prev => ({ ...prev, type: e.target.value }))}
+                  className="text-xs p-1 border rounded"
+                >
+                  {fieldTypes.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <button
+                  type="button"
+                  onClick={addField}
+                  disabled={!newField.name.trim() || !newField.label.trim()}
+                  className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:bg-gray-400"
+                >
+                  <Plus className="h-3 w-3" />
+                  Add Field
+                </button>
+              </div>
+            </div>
+
+            {/* Existing Fields List */}
+            {formValues.requiredFields.length > 0 ? (
+              <div className="space-y-2">
+                {formValues.requiredFields.map(fieldKey => {
+                  const field = formValues.fieldDefinitions[fieldKey];
+                  return (
+                    <div key={fieldKey} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <div>
+                        <span className="font-medium text-sm">{field.label}</span>
+                        <span className="text-xs text-gray-500 ml-2">({fieldKey})</span>
+                        <div className="text-xs text-gray-600">{field.description}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeField(fieldKey)}
+                        className="p-1 text-red-600 hover:text-red-800"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-4 text-gray-500 text-sm">
+                No required fields added yet
+              </div>
+            )}
           </div>
 
           {/* Instructions */}
           <div className="flex flex-col gap-2">
             <div className="flex gap-1 items-center">
               <Label.Root htmlFor="instructions" className="text-sm font-medium text-gray-700">
-                Instructions for AI
+                Instructions for AI *
               </Label.Root>
               <TooltipIcon 
-                content="In your own words, describe what the AI should generate in the narrative. What format and information you want to see in the narrative."
+                content="Describe exactly how you want the AI to format the report. Include section headers, formatting rules, and any specific requirements."
               />
             </div>
             <textarea
               id="instructions"
               name="instructions"
-              placeholder="Describe what the AI should generate..."
+              placeholder="Describe the exact format and structure for the report..."
               value={formValues.instructions}
               onChange={handleChange}
               required
-              className="p-2 border rounded-lg w-full h-24 resize-none focus:outline-none focus:ring focus:ring-indigo-500"
+              className="p-2 border rounded-lg w-full h-32 resize-none focus:outline-none focus:ring focus:ring-indigo-500"
             />
           </div>
 
           {/* Report Type */}
           <div className="flex flex-col gap-2">
             <Label.Root htmlFor="reportType" className="text-sm font-medium text-gray-700">
-              Report Type (Select multiple)
+              Report Type (Select multiple) *
             </Label.Root>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 border rounded-lg">
               {reportTypeOptions.map((type) => {
-                const value = type.toLowerCase();
+                const value = type.toLowerCase().replace(/\s+/g, '_');
                 return (
                   <div key={value} className="flex items-center">
                     <input
@@ -157,25 +348,25 @@ const Create_template = () => {
                 Examples (Optional)
               </Label.Root>
               <TooltipIcon 
-                content="Show AI examples of what you want to generate as the narrative. The better examples you give, the better result you will get."
+                content="Provide examples of complete, well-formatted reports. This helps the AI understand your preferred style and structure."
               />
             </div>
             <textarea
               id="examples"
               name="examples"
-              placeholder="Put examples here..."
+              placeholder="Paste example reports here to show the desired format..."
               value={formValues.examples}
               onChange={handleChange}
-              className="p-2 border rounded-lg w-full h-20 resize-none focus:outline-none focus:ring focus:ring-indigo-500"
+              className="p-2 border rounded-lg w-full h-40 resize-none focus:outline-none focus:ring focus:ring-indigo-500"
             />
           </div>
 
           {/* Submit Button */}
           <button
             type="submit"
-            className="w-full py-2 px-4 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring focus:ring-indigo-500"
+            className="w-full py-3 px-4 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring focus:ring-indigo-500"
           >
-            Submit
+            Create Strict Template
           </button>
         </form>
       </div>

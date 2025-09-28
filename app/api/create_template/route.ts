@@ -3,9 +3,8 @@ import { auth } from '@clerk/nextjs/server';
 import { saveUploadTemplate } from '@/lib/templates';
 
 export async function POST(req: NextRequest) {
-  const { templateName, instructions, examples, reportTypes } = await req.json(); // Change to reportTypes
+  const { templateName, instructions, examples, reportTypes, requiredFields, fieldDefinitions, strictMode } = await req.json();
 
-  // Get user ID from Clerk auth
   const { userId } = auth();
 
   if (!userId) {
@@ -13,7 +12,16 @@ export async function POST(req: NextRequest) {
   }
   
   try {
-    await saveUploadTemplate(userId, templateName, instructions, examples, reportTypes);
+    await saveUploadTemplate(
+      userId, 
+      templateName, 
+      instructions, 
+      examples, 
+      reportTypes,
+      requiredFields || [],
+      fieldDefinitions || {},
+      strictMode !== false // Default to true
+    );
     return NextResponse.json({ message: 'Template saved successfully' }, { status: 201 });
   } catch (error) {
     console.error('Error saving template:', error);
