@@ -20,7 +20,7 @@ type ChatCompletionMessageParam = {
   content: string;
 };
 
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
