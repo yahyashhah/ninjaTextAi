@@ -60,17 +60,13 @@ type Template = {
   createdAt: string;
 };
 
-// UPDATED: Match the API error response structure
 type ValidationError = {
-  error: string;
-  nibrsData?: any;
-  suggestions?: string[];
-  confidence?: any;
-  correctionContext?: any;
-  warnings?: string[];
-  missingFields?: string[];
-  requiredLevel?: string;
-  statusCode?: number;
+  type: "validation_error";
+  missingFields: string[];
+  presentFields: string[];
+  message: string;
+  isComplete: boolean;
+  confidenceScore: number;
 };
 
 const ArrestReport = () => {
@@ -93,6 +89,7 @@ const ArrestReport = () => {
   const [validationError, setValidationError] = useState<ValidationError | null>(null);
   const [additionalInfo, setAdditionalInfo] = useState("");
   const [isSubmittingAdditionalInfo, setIsSubmittingAdditionalInfo] = useState(false);
+  const [isAdditionalInfoModalOpen, setIsAdditionalInfoModalOpen] = useState(false);
   const timerRef = useRef<NodeJS.Timeout>();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -220,7 +217,6 @@ const ArrestReport = () => {
     setFilteredTemplates(filtered);
   }, [searchTerm, templates]);
 
-  // UPDATED: Main submission function with proper error handling
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
       setIsLoading(true);
@@ -249,57 +245,41 @@ const ArrestReport = () => {
         },
       });
 
-      // UPDATED: Handle success response
-      if (response.data.narrative && response.data.nibrs && response.data.xml) {
-        setMessage(response.data.narrative);
-        setPrompt("");
-        form.reset();
-        setSelectedTemplate(null);
-        
-        toast({
-          title: "Success",
-          description: "Arrest report generated successfully",
-          variant: "default",
-        });
+      // Handle validation error response
+      if (response.data.type === "validation_error") {
+        setValidationError(response.data);
+        setIsAdditionalInfoModalOpen(true);
         return;
       }
 
-      // If response doesn't have expected success structure, treat as error
-      throw new Error("Unexpected response format");
+      if (!response.data?.content) {
+        throw new Error("No content in response");
+      }
+
+      setMessage(response.data.content);
+      setPrompt("");
+      form.reset();
+      setSelectedTemplate(null);
 
     } catch (error: any) {
       console.error("Submission error:", error);
       
-      // UPDATED: Handle API validation errors (400 status)
-      if (error.response?.status === 400 && error.response.data) {
-        const errorData = error.response.data;
-        console.log("Validation error received:", errorData);
-        
-        // Set the validation error to show correction UI
-        setValidationError(errorData);
-        
-        toast({
-          title: "Additional Information Needed",
-          description: "Please provide the missing details to complete the report",
-          variant: "default",
-          duration: 5000,
-        });
-      } 
-      // Handle other errors
-      else {
-        console.error("Other error:", error.response?.data || error.message);
-        toast({
-          title: "Submission Error",
-          description: error.response?.data?.message || error.message || "Failed to submit report",
-          variant: "destructive",
-        });
+      if (error.response) {
+        console.error("Response data:", error.response.data);
+        console.error("Response status:", error.response.status);
       }
+
+      toast({
+        title: "Submission Error",
+        description: error.response?.data?.message || error.message || "Failed to submit report",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // UPDATED: Handle additional info submission
+  // Handle additional info submission - FIXED VERSION
   const submitAdditionalInfo = async () => {
     if (!additionalInfo.trim() || !validationError) return;
 
@@ -316,194 +296,40 @@ const ArrestReport = () => {
 
       const response = await axios.post("/api/arrest_report", dataToSend);
 
-      // UPDATED: Handle success response
-      if (response.data.narrative && response.data.nibrs && response.data.xml) {
-        setMessage(response.data.narrative);
-        setValidationError(null);
-        setAdditionalInfo("");
-        setPrompt("");
-
-        toast({
-          title: "Success",
-          description: "Report generated with additional information",
-          variant: "default",
-        });
-        return;
-      }
-
-      // If still getting validation error, update the error state
-      if (response.status === 400 && response.data.error) {
+      if (response.data.type === "validation_error") {
         setValidationError(response.data);
-        toast({
-          title: "Still Missing Information",
-          description: "Please provide the remaining missing details",
-          variant: "default",
-        });
         return;
       }
 
-      throw new Error("Unexpected response format");
+      setMessage(response.data.content);
+      setValidationError(null);
+      setAdditionalInfo("");
+      setPrompt("");
+      setIsAdditionalInfoModalOpen(false);
+
+      toast({
+        title: "Success",
+        description: "Report generated with additional information",
+        variant: "default",
+      });
 
     } catch (error: any) {
       console.error("Error submitting additional info:", error);
-      
-      if (error.response?.status === 400 && error.response.data) {
-        // Update with new validation errors
-        setValidationError(error.response.data);
-        toast({
-          title: "Additional Information Needed",
-          description: "Please review the new requirements",
-          variant: "default",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to process additional information",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Error",
+        description: "Failed to process additional information",
+        variant: "destructive",
+      });
     } finally {
       setIsSubmittingAdditionalInfo(false);
     }
   };
 
-  // UPDATED: Improved validation error modal rendering
-  const renderValidationErrorModal = () => {
-    if (!validationError) return null;
-
-    // Extract present fields from nibrsData if available
-    const presentFields = validationError.nibrsData ? 
-      Object.keys(validationError.nibrsData).filter(key => 
-        validationError.nibrsData[key] !== null && 
-        validationError.nibrsData[key] !== undefined &&
-        validationError.nibrsData[key] !== ''
-      ) : [];
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-          <div className="flex justify-between items-center p-6 border-b">
-            <h3 className="text-lg font-semibold text-gray-900">
-              Additional Information Required
-            </h3>
-            <button
-              onClick={() => setValidationError(null)}
-              className="text-gray-400 hover:text-gray-500"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          
-          <div className="p-6">
-            <div className="mb-4">
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
-                <span className="font-medium text-amber-700">Report Incomplete</span>
-              </div>
-              <p className="text-gray-700 mb-4">{validationError.error}</p>
-              
-              {/* Show suggestions if available */}
-              {validationError.suggestions && validationError.suggestions.length > 0 && (
-                <div className="mb-4">
-                  <h4 className="font-medium text-sm text-gray-600 mb-2">Suggestions:</h4>
-                  <div className="space-y-2">
-                    {validationError.suggestions.map((suggestion, index) => (
-                      <div key={index} className="flex items-start gap-2 text-sm">
-                        <Check className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                        <span className="text-gray-700">{suggestion}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {/* Show missing fields if available */}
-              {validationError.missingFields && validationError.missingFields.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <h4 className="font-medium text-sm text-gray-600 mb-2">Missing Information:</h4>
-                    <div className="space-y-1">
-                      {validationError.missingFields.map((field, index) => (
-                        <div key={index} className="flex items-center gap-2 text-sm">
-                          <X className="h-4 w-4 text-red-500" />
-                          <span className="text-red-600">{field}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {/* Show present fields for context */}
-                  {presentFields.length > 0 && (
-                    <div>
-                      <h4 className="font-medium text-sm text-gray-600 mb-2">Information Provided:</h4>
-                      <div className="space-y-1">
-                        {presentFields.map((field, index) => (
-                          <div key={index} className="flex items-center gap-2 text-sm">
-                            <Check className="h-4 w-4 text-green-500" />
-                            <span className="text-green-600">{field}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {/* Show warnings if available */}
-              {validationError.warnings && validationError.warnings.length > 0 && (
-                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                  <h4 className="font-medium text-sm text-yellow-800 mb-2">Warnings:</h4>
-                  <div className="space-y-1">
-                    {validationError.warnings.map((warning, index) => (
-                      <div key={index} className="text-sm text-yellow-700">• {warning}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Please provide the missing information:
-              </label>
-              <textarea
-                value={additionalInfo}
-                onChange={(e) => setAdditionalInfo(e.target.value)}
-                placeholder="Enter the missing details here. For example: 'The arrest occurred on January 15, 2024 at 14:30 at 123 Main Street. The suspect was identified as John Doe, 35 years old, and was charged with assault. Evidence collected included a weapon found at the scene.'"
-                className="w-full h-32 p-3 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500 resize-vertical"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Be specific and include all missing details mentioned above.
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setValidationError(null)}
-                disabled={isSubmittingAdditionalInfo}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={submitAdditionalInfo}
-                disabled={!additionalInfo.trim() || isSubmittingAdditionalInfo}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                {isSubmittingAdditionalInfo ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  'Submit Additional Information'
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+  // Close validation modal and reset state
+  const closeValidationModal = () => {
+    setValidationError(null);
+    setAdditionalInfo("");
+    setIsAdditionalInfoModalOpen(false);
   };
 
   // Auto-resize textarea
@@ -549,8 +375,104 @@ const ArrestReport = () => {
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] bg-gray-50">
-      {/* UPDATED: Use the new validation error modal */}
-      {renderValidationErrorModal()}
+      {/* Validation Error Modal - FIXED */}
+      {validationError && isAdditionalInfoModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Missing Information Required
+              </h3>
+              <button
+                onClick={closeValidationModal}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                  <span className="font-medium text-amber-700">Template Validation Failed</span>
+                </div>
+                <p className="text-gray-700 mb-4">{validationError.message}</p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <h4 className="font-medium text-sm text-gray-600 mb-2">Missing Fields:</h4>
+                    <div className="space-y-1">
+                      {validationError.missingFields.map(field => {
+                        const fieldDef = selectedTemplate?.fieldDefinitions?.[field];
+                        return (
+                          <div key={field} className="flex items-center gap-2 text-sm">
+                            <X className="h-4 w-4 text-red-500" />
+                            <span>{fieldDef?.label || field}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-sm text-gray-600 mb-2">Present Fields:</h4>
+                    <div className="space-y-1">
+                      {validationError.presentFields.map(field => {
+                        const fieldDef = selectedTemplate?.fieldDefinitions?.[field];
+                        return (
+                          <div key={field} className="flex items-center gap-2 text-sm">
+                            <Check className="h-4 w-4 text-green-500" />
+                            <span>{fieldDef?.label || field}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Please provide the missing information:
+                </label>
+                <textarea
+                  value={additionalInfo}
+                  onChange={(e) => setAdditionalInfo(e.target.value)}
+                  placeholder="Enter the missing details here. For example: 'The incident occurred on January 15, 2024 at 14:30 at 123 Main Street. The suspect was identified as John Doe, 35 years old.'"
+                  className="w-full h-32 p-3 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500 resize-vertical"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Be specific and include all missing details mentioned above.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={closeValidationModal}
+                  disabled={isSubmittingAdditionalInfo}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={submitAdditionalInfo}
+                  disabled={!additionalInfo.trim() || isSubmittingAdditionalInfo}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {isSubmittingAdditionalInfo ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Submit Additional Information'
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Help Modal */}
       {showHelpModal && (
@@ -579,7 +501,7 @@ const ArrestReport = () => {
                 <span className="font-semibold">3. Auto-Formatting:</span> System generates complete reports from your input.
               </p>
               <p>
-                <span className="font-semibold">4. Error Handling:</span> If information is missing, you'll be prompted to provide additional details.
+                <span className="font-semibold">4. Strict Validation:</span> Templates may require specific information. If missing, you'll be prompted to provide it.
               </p>
             </div>            
             <Button 
@@ -837,37 +759,18 @@ const ArrestReport = () => {
 
             {/* Template Requirements */}
             {renderTemplateRequirements()}
-
-            {/* Input Guidance */}
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-              <div className="flex items-center gap-2 mb-2">
-                <Info className="h-4 w-4 text-yellow-600" />
-                <span className="text-sm font-medium text-yellow-800">Reporting Guidance</span>
-              </div>
-              <ul className="text-sm text-yellow-700 space-y-1">
-                <li>• Include specific dates, times, and locations</li>
-                <li>• Mention all involved persons with descriptions</li>
-                <li>• Describe the sequence of events in detail</li>
-                <li>• Note any evidence collected or actions taken</li>
-                {selectedTemplate.strictMode && (
-                  <li className="font-semibold">• Ensure all required fields above are covered</li>
-                )}
-              </ul>
-            </div>
           </div>
         )}
       </div>
 
-      {/* Input Section with Recording Controls */}
-      <div className="bg-white px-4 py-3 border-t relative">
-        {/* Recording Controls - shown on top of input when recording */}
-        {!message && !isLoading && (
-          <div>
+      {!message && !isLoading && (
+        <div className="w-full flex flex-col items-center gap-5"> 
+          <div className="w-full">
             {showRecordingControls ? (
-              <div className="absolute bottom-full lg:bottom-40 xl:bottom-44 2xl:bottom-60 left-0 right-0 pt-4 rounded-t-lg">
-                <div className="max-w-4xl mx-auto">
+              <div className="p-4 rounded-t-lg">
+                <div className="max-w-4xl w-full mx-auto">
                   <div className="flex flex-col items-center">
-                    <div className="flex items-center space-x-3 mb-3">
+                    <div className="flex items-center space-x-3 mb-2">
                       <div className="relative">
                         {!isPaused && (
                           <div className="absolute inset-0 bg-red-100 rounded-full animate-ping opacity-75"></div>
@@ -878,10 +781,10 @@ const ArrestReport = () => {
                         {isPaused ? "Recording Paused" : "Recording"}
                       </span>
                     </div>
-                    <div className="text-2xl font-mono font-medium text-gray-800 mb-4 text-center">
+                    <div className="text-2xl font-mono font-medium text-gray-800 mb-2 text-center">
                       {formatTime(recordingTime)}
                     </div>
-                    <div className="flex justify-center space-x-4 mb-4">
+                    <div className="flex justify-center space-x-4 mb-2">
                       {isPaused ? (
                         <Button
                           onClick={resumeRecording}
@@ -903,7 +806,7 @@ const ArrestReport = () => {
                       )}
                       <Button
                         onClick={submitRecording}
-                        className="bg-blue-600 hover:bg-blue-700 mb-2"
+                        className="bg-blue-600 hover:bg-blue-700 "
                       >
                         Submit Recording
                       </Button>
@@ -913,13 +816,13 @@ const ArrestReport = () => {
               </div>
             ) : (
               <div className={cn(
-                "absolute",
-                "bottom-40", // Default position
-                "md:bottom-44", // Slightly higher on medium screens
-                "lg:bottom-48", // Higher on large screens
-                "xl:bottom-[13rem]", // Even higher on extra large screens
-                "2xl:bottom-60", // Highest on 2xl screens
-                "left-0 right-0 pt-4 rounded-t-lg"
+                // "absolute",
+                // "bottom-40", // Default position
+                // "md:bottom-44", // Slightly higher on medium screens
+                // "lg:bottom-48", // Higher on large screens
+                // "xl:bottom-[13rem]", // Even higher on extra large screens
+                // "2xl:bottom-60", // Highest on 2xl screens
+                "w-full pt-4 rounded-t-lg"
               )}>
                 <div className={cn(
                   "mx-auto",
@@ -946,9 +849,8 @@ const ArrestReport = () => {
               </div>
             )}
           </div>
-        )}
 
-        {!message && !isLoading && (
+      <div className="bg-white w-full px-4 py-3 border-t relative">
         <> 
         <Form {...form}>
           <form
@@ -1007,8 +909,9 @@ const ArrestReport = () => {
           </div>
         </div>
         </>
-        )}
       </div>
+      </div>
+      )}
     </div>
   );
 };

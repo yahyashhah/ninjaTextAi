@@ -1,32 +1,213 @@
-// route.ts - FIXED with proper error handling for CorrectionUI
 import { checkApiLimit, increaseAPiLimit } from "@/lib/api-limits";
 import { saveHistoryReport } from "@/lib/history-reports";
+import prismadb from "@/lib/prismadb";
 import { checkSubscription } from "@/lib/subscription";
 import { trackReportEvent, trackUserActivity } from "@/lib/tracking";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import OpenAI from "openai/index.mjs";
 
-import { validateDescriptiveNibrs, validateNibrsPayload, validateProfessionalNibrs } from "@/lib/nibrs/Validator";
+// Import NIBRS utilities
+import { validateDescriptiveNibrs, validateNibrsPayload } from "@/lib/nibrs/Validator";
 import { validateWithTemplate } from "@/lib/nibrs/templates";
-import { NibrsSegments } from "@/lib/nibrs/schema";
 import { buildNIBRSXML } from "@/lib/nibrs/xml";
 import { NibrsMapper } from "@/lib/nibrs/mapper";
 import { NIBRSErrorBuilder } from "@/lib/nibrs/errorBuilder";
 import { StandardErrorResponse } from "@/lib/nibrs/errorResponse";
-import { sendLowAccuracyNotification } from "@/lib/notifications";
 
 type ChatCompletionMessageParam = {
   role: "system" | "user" | "assistant";
   content: string;
 };
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// NIBRS-specific template instructions
+const NIBRS_TEMPLATE_INSTRUCTIONS = `
+You are a NIBRS data extraction specialist. Convert police narratives into structured NIBRS data.
+
+CRITICAL NIBRS RULES:
+1. FOCUS ON NIBRS-REPORTABLE OFFENSES: assault, theft, burglary, robbery, drug violations, weapon crimes
+2. EXCLUDE: Simple traffic offenses (unless DUI or serious injury), minor incidents not requiring NIBRS reporting
+3. DRUG/WEAPON OFFENSES: Use Society/Public victim (Type S) with injury "N"
+4. INDIVIDUAL CRIMES: Use individual victims (Type I) with specific injuries when applicable
+5. REQUIRED FIELDS: incident date, location, offense description, victim information
+
+NIBRS-SPECIFIC TEMPLATE FORMAT:
+Today is [date] at approximately [time]. I was dispatched to [location] in reference to [type of incident]. 
+Upon arrival, I made contact with [victim information if applicable]. 
+The victim reported that [describe what happened, including actions by offender(s)].
+The offense involved is [offense description]. The offense was [attempted/completed]. 
+The suspect is described as [demographics if known].
+The suspect used [method/weapon/force if applicable]. 
+The victim sustained [type of injury if any]. 
+The property involved includes [list items with descriptions and values if applicable].
+
+OUTPUT FORMAT - JSON ONLY:
+{
+  "extractedData": {
+    "incidentNumber": string (optional),
+    "incidentDate": "YYYY-MM-DD",
+    "incidentTime": "HH:mm" (optional),
+    "locationDescription": string,
+    
+    "offenses": [
+      {
+        "description": string,
+        "attemptedCompleted": "A" | "C"
+      }
+    ],
+    
+    "victims": [
+      {
+        "type": "I" | "S" | "B" | etc.,
+        "age": number (optional),
+        "sex": "M" | "F" | "U",
+        "race": "W" | "B" | "I" | "A" | "P" | "U",
+        "ethnicity": "H" | "N" | "U",
+        "injury": string
+      }
+    ],
+
+    "offenders": [
+      {
+        "age": number (optional),
+        "sex": "M" | "F" | "U",
+        "race": "W" | "B" | "I" | "A" | "P" | "U",
+        "ethnicity": "H" | "N" | "U"
+      }
+    ],
+
+    "properties": [
+      {
+        "lossDescription": string,
+        "propertyDescription": string,
+        "value": number
+      }
+    ]
+  },
+  "narrative": "Cleaned narrative following NIBRS template"
+}
+`;
+
+// Helper function to get user's organization
+async function getUserOrganization(userId: string) {
+  try {
+    const memberships = await clerkClient.users.getOrganizationMembershipList({
+      userId: userId,
+    });
+    
+    if (memberships.data.length > 0) {
+      return memberships.data[0].organization;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching user organization:", error);
+    return null;
+  }
+}
+
+// Unified validation function
+async function validateInputCompleteness(narrative: string, template: any) {
+  const requiredFields = template?.requiredFields || [];
+
+  if (requiredFields.length === 0) {
+    return {
+      isComplete: true,
+      missingFields: [],
+      presentFields: [],
+      confidenceScore: 1.0,
+      promptForMissingInfo: "No specific fields required for this template."
+    };
+  }
+
+  const validationPrompt = `
+POLICE REPORT FIELD VALIDATION
+
+REQUIRED FIELDS TO VALIDATE:
+${requiredFields.map((field: string) => {
+  const fieldDef = template.fieldDefinitions?.[field];
+  return `- ${field}: ${fieldDef?.label || field} - ${fieldDef?.description || 'No description'}`;
+}).join('\n')}
+
+NARRATIVE TO VALIDATE:
+"${narrative}"
+
+CHECK: Does the narrative contain information for EACH required field above?
+
+RESPONSE FORMAT - JSON ONLY:
+{
+  "isComplete": boolean,
+  "missingFields": ["field_names_from_required_list"],
+  "presentFields": ["field_names_from_required_list"],
+  "confidenceScore": number,
+  "promptForMissingInfo": "Brief prompt asking for missing fields"
+}
+`;
+
+  try {
+    const validationResponse = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [{ role: "user", content: validationPrompt }],
+      temperature: 0.1,
+      max_tokens: 500
+    });
+
+    const content = validationResponse.choices[0].message.content;
+    if (!content) throw new Error("No content in validation response");
+    
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON found in validation response");
+    
+    return JSON.parse(jsonMatch[0]);
+  } catch (error) {
+    console.error("Validation error:", error);
+    return {
+      isComplete: false,
+      missingFields: requiredFields,
+      presentFields: [],
+      confidenceScore: 0,
+      promptForMissingInfo: `Please ensure you provide: ${requiredFields.join(', ')}`
+    };
+  }
+}
+
+// Create system instructions for narrative report
+function createNarrativeSystemInstructions(template: any) {
+  if (!template) {
+    return `You are a professional police report writer. Convert the officer's narrative into a standardized format.`;
+  }
+
+  const fieldDefinitions = template.fieldDefinitions || {};
+  const requiredFields = template.requiredFields || [];
+  
+  const requiredFieldsText = requiredFields.map((field: string) => {
+    const def = fieldDefinitions[field];
+    return `- ${field}: ${def?.description || 'No description'} ${def?.required ? '(REQUIRED)' : ''}`;
+  }).join('\n') || 'No specific fields required';
+
+  return `
+POLICE REPORT TEMPLATE CONVERSION
+
+TEMPLATE REQUIREMENTS:
+${requiredFieldsText}
+
+TEMPLATE INSTRUCTIONS:
+${template.instructions || 'Convert the narrative into a professional police report format.'}
+
+FORMATTING RULES:
+- Use the exact structure provided in the examples
+- Only include information explicitly stated in the narrative
+- Mark missing information as "INFORMATION NOT PROVIDED"
+- Use professional law enforcement terminology
+`;
+}
+
+// Helper function to parse JSON safely
 function tryParseJSON(raw: string) {
   raw = (raw || "").trim();
   try {
@@ -48,46 +229,18 @@ function tryParseJSON(raw: string) {
   throw new Error("Model output is not valid JSON.");
 }
 
-function getSuggestedFixForTemplateError(error: string): string {
-  if (error.includes("Evidence information is required")) {
-    return "Add evidence details like 'field test kit' or 'evidence tag number' to the narrative";
-  }
-  if (error.includes("Property information is required")) {
-    return "Add property descriptions and values for damaged vehicles or stolen items";
-  }
-  if (error.includes("is required for offense")) {
-    return "Ensure all required fields are provided in the narrative";
-  }
-  if (error.includes("Drug/weapon offenses require a Society/Public victim")) {
-    return "Add 'Society/Public' as victim for drug or weapon offenses";
-  }
-  if (error.includes("Non-victimless offenses require individual or business victims")) {
-    return "Add individual victim information including injuries and demographics";
-  }
-  return "Review the narrative for missing required information";
-}
-
-// Function to calculate accuracy score with safe data access
+// Calculate accuracy score for NIBRS reports
 function calculateAccuracyScore(data: any, validationErrors: string[] = [], warnings: string[] = []): number {
-  // FIX: Handle undefined data
-  if (!data) {
-    return 0; // Base score for failed validation
-  }
+  if (!data) return 0;
   
   let baseScore = 100;
-  
-  // Deduct for validation errors
   baseScore -= validationErrors.length * 10;
-  
-  // Deduct for warnings
   baseScore -= warnings.length * 5;
   
-  // Deduct for missing critical fields (with safe access)
   if (!data.offenses || data.offenses.length === 0) baseScore -= 20;
   if (!data.victims || data.victims.length === 0) baseScore -= 15;
   if (!data.properties || data.properties.length === 0) baseScore -= 10;
   
-  // Deduct for low confidence mappings (with safe access)
   if (data.offenses && Array.isArray(data.offenses)) {
     data.offenses.forEach((offense: any) => {
       if (offense.mappingConfidence && offense.mappingConfidence < 0.6) {
@@ -98,20 +251,67 @@ function calculateAccuracyScore(data: any, validationErrors: string[] = [], warn
     });
   }
   
-  // Ensure score is within bounds
   return Math.max(0, Math.min(100, baseScore));
 }
 
+// Enhanced NIBRS error extraction
+function extractNIBRSErrorDetails(error: Error) {
+  const errorMessage = error.message || "NIBRS report generation failed";
+  const details = {
+    error: errorMessage,
+    missingFields: [] as string[],
+    warnings: [] as string[],
+    suggestions: [] as string[],
+  };
+
+  // Parse common NIBRS error patterns
+  if (errorMessage.toLowerCase().includes("victim") || errorMessage.includes("Non-victimless offenses require")) {
+    details.missingFields.push("Victim information");
+    details.suggestions.push("Add victim type (Individual, Society/Public, or Business)");
+    details.suggestions.push("For drug/weapon offenses, use 'Society/Public' victim type");
+    details.suggestions.push("For assaults/thefts, use 'Individual' victim type");
+  }
+  
+  if (errorMessage.toLowerCase().includes("offense") || errorMessage.includes("No offense descriptions")) {
+    details.missingFields.push("Offense description");
+    details.suggestions.push("Specify the criminal offense type (e.g., Burglary, Assault, Theft)");
+    details.suggestions.push("Use NIBRS-standard offense descriptions");
+  }
+  
+  if (errorMessage.toLowerCase().includes("property")) {
+    details.missingFields.push("Property details");
+    details.suggestions.push("Describe stolen/damaged property");
+    details.suggestions.push("Include property values if available");
+  }
+
+  if (errorMessage.toLowerCase().includes("location")) {
+    details.missingFields.push("Location information");
+    details.suggestions.push("Provide specific location or address");
+  }
+
+  if (errorMessage.toLowerCase().includes("date")) {
+    details.missingFields.push("Incident date");
+    details.suggestions.push("Include when the incident occurred");
+  }
+
+  // Add general suggestions if no specific fields identified
+  if (details.missingFields.length === 0) {
+    details.suggestions.push("Review the narrative for missing crime details");
+    details.suggestions.push("Ensure all required NIBRS fields are provided");
+  }
+
+  return details;
+}
+
 export async function POST(req: Request) {
-  let userId: string | null = null;
   let startTime = Date.now();
+  let userId: string | null = null;
 
   try {
     const authResult = auth();
     userId = authResult.userId;
-
     const body = await req.json();
-    const { prompt, selectedTemplate } = body;
+    const { prompt, selectedTemplate, generateBoth = true, correctedData } = body;
     startTime = Date.now();
 
     if (!userId) return new NextResponse("Unauthorized User", { status: 401 });
@@ -122,445 +322,328 @@ export async function POST(req: Request) {
     const isPro = await checkSubscription();
     if (!freeTrail && !isPro) return new NextResponse("Free Trial has expired", { status: 403 });
 
-    const systemInstructions = selectedTemplate?.instructions || `
-You are a NIBRS data extraction assistant and professional police report writer.
-From the user's free text, extract ALL relevant information including multiple offenses, victims, offenders, and properties.
-
-CRITICAL PROFESSIONAL RULES:
-1. FOCUS ON SERIOUS CRIMES: assault, theft, burglary, robbery, drug violations, weapon crimes
-2. TRAFFIC OFFENSES: Only include if DUI or serious injury involved - exclude simple traffic collisions
-3. DRUG/WEAPON OFFENSES: Use Society/Public victim (Type S) with injury "N"
-4. TRAFFIC COLLISIONS WITH INJURIES: Use individual victims (Type I) with specific injuries
-5. OTHER CRIMES: Use individual victims (Type I) with specific injuries
-6. REQUIRED FIELDS: incident date, location description, property values for stolen items
-
-Produce a NIBRS-aligned JSON object with these exact keys:
-{
-  "extractedData": {
-    "incidentNumber": string (optional),
-    "incidentDate": "YYYY-MM-DD", // MUST be in this format
-    "incidentTime": "HH:mm" (if available, else omit),
-    "clearedExceptionally": "Y" | "N" (default "N"),
-    "exceptionalClearanceDate": "YYYY-MM-DD" (optional),
+    // Get user's organization
+    const userOrganization = await getUserOrganization(userId);
+    let organization = null;
     
-    "offenses": [
-      {
-        "description": string,
-        "attemptedCompleted": "A" | "C" (default "C")
-      }
-    ],
-    
-    "locationDescription": string,
-    "weaponDescriptions": string[] (optional),
-    "biasMotivation": string (optional),
-
-    "victims": [
-      {
-        "type": "I" | "B" | "F" | "G" | "L" | "O" | "P" | "R" | "S" | "U",
-        "age": number (optional),
-        "sex": "M" | "F" | "U" (optional),
-        "race": "W" | "B" | "I" | "A" | "P" | "U" (optional),
-        "ethnicity": "H" | "N" | "U" (optional),
-        "injury": string (optional)
-      }
-    ],
-
-    "offenders": [
-      {
-        "age": number (optional),
-        "sex": "M" | "F" | "U" (optional),
-        "race": "W" | "B" | "I" | "A" | "P" | "U" (optional),
-        "ethnicity": "H" | "N" | "U" (optional),
-        "relationshipDescription": string (optional)
-      }
-    ],
-
-    "properties": [
-      {
-        "lossDescription": string (optional),
-        "propertyDescription": string (optional),
-        "value": number (optional)
-      }
-    ]
-  },
-  "narrative": string
-}
-
-DATE FORMATTING RULES:
-- Convert "September 11, 2025" to "2025-09-11"
-- Convert "19:45 hours" to "19:45"
-- Always use YYYY-MM-DD format for dates
-
-VICTIM ASSIGNMENT RULES:
-- For drug crimes: ALWAYS include Type "S" (Society/Public) with injury "N"
-- For weapon violations: ALWAYS include Type "S" (Society/Public) with injury "N"  
-- For traffic collisions with injuries: Include Type "I" (Individual) with specific injuries
-- For assaults/thefts/burglaries: Include Type "I" (Individual) with specific injuries
-
-PROPERTY RULES:
-- For drugs: Include description, estimated value, and note if seized
-- For stolen items: Include detailed description and estimated value
-- For vehicles: Include make, model, year, and value
-
-ARREST RULES:
-- If arrest occurred, include offender demographics and arrest details
-- For Group B offenses, only include if arrest was made
-
-IMPORTANT:
-- Return a SINGLE JSON document with top-level keys "extractedData" and "narrative" ONLY
-- Use double quotes and valid JSON. Do not add markdown, comments, or extra text.
-- NEVER output NIBRS codes - only descriptive text that we can map to codes.
-- Include ALL relevant details from the narrative - don't omit important information.
-`;
-
-    const messages: ChatCompletionMessageParam[] = [
-      { role: "system", content: systemInstructions },
-      ...(selectedTemplate?.examples
-        ? [{ role: "system" as const, content: `Example Report:\n${selectedTemplate.examples}` }]
-        : []),
-      { role: "user", content: prompt }
-    ];
-
-    console.log("Sending request to OpenAI with prompt:", prompt.substring(0, 200) + "...");
-
-    // Get structured output
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages,
-      temperature: 0.1, // Lower temperature for more consistent results
-      response_format: { type: "json_object" }
-    });
-
-    const raw = completion.choices?.[0]?.message?.content ?? "";
-
-    let parsed: { extractedData: any; narrative: string };
-
-    try {
-      parsed = tryParseJSON(raw);
-    } catch (e: any) {
-      console.error("JSON parsing failed:", e.message);
-      console.error("Raw response that failed:", raw);
-      
-      const errorResponse: StandardErrorResponse = {
-        error: "Model did not return valid JSON",
-        suggestions: ["Please rephrase your input and try again"],
-        nibrsData: {}
-      };
-      
-      return NextResponse.json(errorResponse, { status: 400 });
-    }
-
-    // Map descriptive data to NIBRS codes
-    const descriptiveData = parsed.extractedData || {};
-    const narrative = (parsed.narrative || "").trim();
-
-    if (!narrative) {
-      console.error("Narrative missing from model output");
-      
-      const errorResponse: StandardErrorResponse = {
-        error: "Narrative missing from model output",
-        suggestions: ["Please provide more detailed information about the incident"],
-        nibrsData: descriptiveData
-      };
-      
-      return NextResponse.json(errorResponse, { status: 400 });
-    }
-
-    // PROFESSIONAL VALIDATION - Check descriptive data before mapping
-    const professionalValidation = validateDescriptiveNibrs({
-      ...descriptiveData,
-      offenses: descriptiveData.offenses || [],
-      victims: descriptiveData.victims || [],
-      offenders: descriptiveData.offenders || [],
-      properties: descriptiveData.properties || [],
-      narrative: narrative
-    });
-
-    if (professionalValidation.errors.length > 0) {
-      const errorResponse = NIBRSErrorBuilder.fromProfessionalValidation(
-        professionalValidation,
-        descriptiveData
-      );
-      return NextResponse.json(errorResponse, { status: 400 });
-    }
-
-    // Mapper validation
-    const mapperValidation = NibrsMapper.validateAndMapExtract({
-      ...descriptiveData,
-      narrative
-    });
-
-    if (mapperValidation.errors.length > 0) {
-      const errorResponse = NIBRSErrorBuilder.fromMapperValidation(mapperValidation);
-      return NextResponse.json(errorResponse, { status: 400 });
-    }
-
-    const mapped = mapperValidation.data;
-
-    // Run your existing validator (zod + logical checks)
-    const { ok, data, errors, warnings: validationWarnings, correctionContext } = validateNibrsPayload(mapped);
-
-    console.log("Validation result:", { ok, errors, warnings: validationWarnings });
-
-    const warnings: string[] = [...validationWarnings];
-    
-    // FIX: Handle validation failure FIRST before trying to use 'data'
-    if (!ok && errors.length > 0) {
-      console.log("Validation failed - returning error to CorrectionUI");
-      console.log("Errors:", errors);
-      console.log("Data available:", !!data);
-      
-      // FIX: Use safe data access and provide proper fallbacks
-      const errorResponse = NIBRSErrorBuilder.fromSchemaValidation(
-        errors,
-        warnings,
-        data || {},  // Provide empty object if data is undefined
-        correctionContext || {}  // Provide empty object if correctionContext is undefined
-      );
-      
-      console.log("Error response being sent to frontend:", errorResponse);
-      return NextResponse.json(errorResponse, { status: 400 });
-    }
-
-    // FIX: Only process offenses if data exists and validation passed
-    if (data && data.offenses && Array.isArray(data.offenses)) {
-      data.offenses.forEach((offense: any) => {
-        if (offense.mappingConfidence && offense.mappingConfidence < 0.6) {
-          warnings.push(`Low confidence in offense mapping: ${offense.code} (confidence: ${offense.mappingConfidence})`);
-        } else if (offense.mappingConfidence && offense.mappingConfidence < 0.8) {
-          warnings.push(`Low confidence in offense mapping: ${offense.code} (confidence: ${offense.mappingConfidence})`);
+    if (userOrganization) {
+      organization = await prismadb.organization.upsert({
+        where: { clerkOrgId: userOrganization.id },
+        update: { name: userOrganization.name, updatedAt: new Date() },
+        create: {
+          clerkOrgId: userOrganization.id,
+          name: userOrganization.name,
+          description: `Police Department - ${userOrganization.name}`,
+          type: 'law_enforcement',
+          memberCount: 0,
+          reportCount: 0,
+          lowAccuracyCount: 0
         }
       });
     }
 
-    // FIX: Safe accuracy score calculation
-    const accuracyScore = calculateAccuracyScore(data || {}, errors, warnings);
-    console.log("Calculated accuracy score:", accuracyScore);
-
-    // FIX: Safe template validation - only if data exists
-    let templateErrors: string[] = [];
-    if (data) {
-      templateErrors = validateWithTemplate(data);
-    } else {
-      templateErrors = ["Validation failed: No structured data available for template validation"];
-      console.warn("No data available for template validation");
-    }
-
-    if (templateErrors.length > 0) {
-      console.log("Template validation errors:", templateErrors);
+    // STEP 1: VALIDATE INPUT COMPLETENESS FOR NARRATIVE (if template has requirements)
+    if (selectedTemplate?.strictMode !== false && selectedTemplate?.requiredFields?.length > 0 && !correctedData) {
+      console.log("=== VALIDATING NARRATIVE TEMPLATE REQUIREMENTS ===");
+      const validationResult = await validateInputCompleteness(prompt, selectedTemplate);
       
-      const templateCorrectionContext = {
-        missingVictims: correctionContext?.missingVictims || [],
-        ambiguousProperties: correctionContext?.ambiguousProperties || [],
-        requiredFields: correctionContext?.requiredFields || [],
-        multiOffenseIssues: correctionContext?.multiOffenseIssues || [],
-        templateErrors: templateErrors.map(error => ({
-          message: error,
-          offenseCode: data?.offenses?.[0]?.code, // Safe optional chaining
-          suggestedFix: getSuggestedFixForTemplateError(error)
-        }))
-      };
-
-      const errorResponse = NIBRSErrorBuilder.fromTemplateValidation(
-        templateErrors,
-        warnings,
-        data || {},
-        templateCorrectionContext
-      );
-      
-      return NextResponse.json(errorResponse, { status: 400 });
-    }
-
-    // FIX: Only build XML if everything is valid and data exists
-    if (!data) {
-      console.error("No valid data available for XML generation");
-      const errorResponse: StandardErrorResponse = {
-        error: "No valid NIBRS data available after validation",
-        suggestions: ["Please check the input narrative for completeness"],
-        nibrsData: {}
-      };
-      return NextResponse.json(errorResponse, { status: 400 });
-    }
-
-    const xml = buildNIBRSXML(data);
-
-    console.log('🚀 Attempting to submit report to department system...');
-    try {
-      // Use the existing authResult instead of calling auth() again
-      let clerkOrgId: string | null = null;
-
-      // Debug: Log all session claims to see what's available
-      console.log('🔍 All session claims:', authResult.sessionClaims);
-
-      // Try different ways to access organization memberships
-      let orgMemberships: any = null;
-
-      // Method 1: Try the most common way
-      if (authResult.sessionClaims?.org_memberships) {
-        orgMemberships = authResult.sessionClaims.org_memberships;
-        console.log('✅ Found org_memberships in session claims');
-      } 
-      // Method 2: Try alternative naming
-      else if (authResult.sessionClaims?.organization_memberships) {
-        orgMemberships = authResult.sessionClaims.organization_memberships;
-        console.log('✅ Found organization_memberships in session claims');
-      }
-      // Method 3: Try Clerk's newer format
-      else if (authResult.sessionClaims?.orgs) {
-        orgMemberships = authResult.sessionClaims.orgs;
-        console.log('✅ Found orgs in session claims');
-      }
-
-      console.log('📋 User organization memberships:', orgMemberships);
-
-      // Process the organization memberships
-      if (orgMemberships) {
-        if (Array.isArray(orgMemberships) && orgMemberships.length > 0) {
-          clerkOrgId = orgMemberships[0];
-          console.log('✅ Using first organization from array:', clerkOrgId);
-        } else if (typeof orgMemberships === 'object' && orgMemberships !== null) {
-          const orgIds = Object.keys(orgMemberships);
-          if (orgIds.length > 0) {
-            clerkOrgId = orgIds[0];
-            console.log('✅ Using first organization from object:', clerkOrgId);
-          }
-        }
-      }
-
-      // If still no organization, use the direct Clerk API as fallback
-      if (!clerkOrgId) {
-        console.log('🔄 Falling back to Clerk API for organization membership...');
-        try {
-          const memberships = await clerkClient().users.getOrganizationMembershipList({
-            userId: authResult.userId!,
-          });
-          
-          if (memberships.data.length > 0) {
-            clerkOrgId = memberships.data[0].organization.id;
-            console.log('✅ Found organization via Clerk API:', clerkOrgId);
-          }
-        } catch (error) {
-          console.error('❌ Error fetching organization from Clerk API:', error);
-        }
-      }
-
-      if (clerkOrgId) {
-        console.log('📤 Submitting to department API with orgId:', clerkOrgId);
+      if (!validationResult.isComplete && validationResult.missingFields.length > 0) {
+        console.log("=== VALIDATION FAILED - MISSING REQUIRED FIELDS ===");
         
-        const submissionPayload = {
-          narrative,
-          nibrsData: data,
-          accuracyScore: accuracyScore,
-          reportType: 'nibrs',
-          title: `NIBRS Report - ${new Date().toLocaleDateString()}`,
-          clerkOrgId: clerkOrgId,
-          clerkUserId: userId
-        };
+        await trackReportEvent({
+          userId: userId,
+          reportType: "narrative",
+          processingTime: Date.now() - startTime,
+          success: false,
+          templateUsed: selectedTemplate?.templateName,
+          error: `Validation failed: ${validationResult.missingFields.join(', ')}`
+        });
+        
+        return NextResponse.json({
+          type: "validation_error",
+          error: validationResult.promptForMissingInfo,
+          missingFields: validationResult.missingFields,
+          presentFields: validationResult.presentFields,
+          message: validationResult.promptForMissingInfo,
+          isComplete: false,
+          confidenceScore: validationResult.confidenceScore,
+          source: "template"
+        }, { status: 200 });
+      }
+    }
 
-        console.log('📦 Submission payload:', JSON.stringify(submissionPayload, null, 2));
+    // STEP 2: GENERATE BOTH REPORTS SIMULTANEOUSLY
+    console.log("=== GENERATING BOTH REPORTS SIMULTANEOUSLY ===");
+    
+    const [narrativeResult, nibrsResult] = await Promise.allSettled([
+      generateNarrativeReport(prompt, selectedTemplate),
+      generateNIBRSReport(prompt)
+    ]);
 
-        const submissionResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/department/submit`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(submissionPayload)
+    // Process narrative result
+    let narrativeContent = "";
+    if (narrativeResult.status === 'fulfilled') {
+      narrativeContent = narrativeResult.value;
+    } else {
+      console.error("Narrative generation failed:", narrativeResult.reason);
+      narrativeContent = "Error generating narrative report. Please try again.";
+    }
+
+    // Process NIBRS result - CRITICAL FIX: Handle NIBRS errors properly
+    let nibrsData = null;
+    let xmlData = null;
+    let accuracyScore = null;
+    let nibrsWarnings = [];
+    
+    if (nibrsResult.status === 'fulfilled') {
+      nibrsData = nibrsResult.value.nibrs;
+      xmlData = nibrsResult.value.xml;
+      accuracyScore = nibrsResult.value.accuracyScore;
+      nibrsWarnings = nibrsResult.value.warnings || [];
+    } else {
+      console.error("NIBRS generation failed:", nibrsResult.reason);
+      
+      // EXTRACT NIBRS ERROR INFORMATION FOR CORRECTION UI
+      const nibrsError = nibrsResult.reason;
+      const errorDetails = extractNIBRSErrorDetails(nibrsError);
+
+      // Return NIBRS error to trigger CorrectionUI
+      return NextResponse.json({
+        type: "nibrs_validation_error",
+        ...errorDetails,
+        nibrsData: {}, // Empty NIBRS data since generation failed
+        confidenceScore: 0,
+        isComplete: false,
+        source: "nibrs"
+      }, { status: 200 });
+    }
+
+    const processingTime = Date.now() - startTime;
+
+    // STEP 3: SAVE REPORTS AND TRACK ACTIVITY (only if both succeeded)
+    if (narrativeContent && nibrsData && !nibrsData.error) {
+      // Save to user reports table
+      const savedReport = await prismadb.userReports.create({
+        data: {
+          userId: userId,
+          reportName: `${selectedTemplate?.templateName || 'Dual'} Report - ${new Date().toLocaleDateString()}`,
+          reportText: narrativeContent,
+          tag: 'dual_report'
+        }
+      });
+
+      // Save to DepartmentReport table
+      if (organization) {
+        await prismadb.departmentReport.create({
+          data: {
+            organizationId: organization.id,
+            clerkUserId: userId,
+            reportType: 'dual_report',
+            title: `${selectedTemplate?.templateName || 'Dual'} Report - ${new Date().toLocaleDateString()}`,
+            content: narrativeContent,
+            nibrsData: JSON.stringify(nibrsData),
+            accuracyScore: accuracyScore,
+            status: 'submitted',
+            submittedAt: new Date(),
+          }
         });
 
-        console.log('📨 Department API response status:', submissionResponse.status);
-
-        if (!submissionResponse.ok) {
-          const errorText = await submissionResponse.text();
-          console.error('❌ Department submission failed:', errorText);
-        } else {
-          const submissionResult = await submissionResponse.json();
-          console.log('✅ Report submitted to department system:', submissionResult);
-        }
-      } else {
-        console.warn('⚠️ No organization ID found for user. Report not submitted to department.');
+        // Update organization report count
+        await prismadb.organization.update({
+          where: { id: organization.id },
+          data: { reportCount: { increment: 1 }, updatedAt: new Date() }
+        });
       }
-    } catch (submissionError) {
-      console.error('❌ Error submitting to department system:', submissionError);
+
+      // Track success
+      await trackReportEvent({
+        userId: userId,
+        reportType: "dual_report",
+        processingTime: processingTime,
+        success: true,
+        templateUsed: selectedTemplate?.templateName,
+      });
+
+      await trackUserActivity({
+        userId: userId,
+        activity: "report_created",
+        metadata: {
+          reportType: "dual_report",
+          templateUsed: selectedTemplate?.templateName,
+          reportId: savedReport.id,
+          organizationId: organization?.id,
+          hasNibrs: !!nibrsData,
+          accuracyScore: accuracyScore
+        }
+      });
+
+      // Track department activity
+      if (organization) {
+        await prismadb.departmentActivityLog.create({
+          data: {
+            organizationId: organization.id,
+            userId: userId,
+            activityType: 'report_submitted',
+            description: `Submitted dual report using ${selectedTemplate?.templateName || 'default'} template`,
+            metadata: JSON.stringify({
+              reportType: 'dual_report',
+              template: selectedTemplate?.templateName,
+              processingTime: processingTime,
+              hasNibrs: !!nibrsData,
+              accuracyScore: accuracyScore
+            })
+          }
+        });
+      }
+
+      if (!isPro) await increaseAPiLimit();
+
+      // Save to history
+      await saveHistoryReport(userId, `${Date.now()}`, narrativeContent, "dual_report");
+
+      console.log("=== BOTH REPORTS GENERATED SUCCESSFULLY ===");
+      
+      // Return both reports in unified format
+      return NextResponse.json({
+        narrative: narrativeContent,
+        nibrs: nibrsData,
+        xml: xmlData,
+        accuracyScore: accuracyScore,
+        warnings: nibrsWarnings,
+        success: true
+      }, { status: 200 });
+    } else {
+      // If we have narrative but NIBRS failed, return partial success with NIBRS error
+      return NextResponse.json({
+        narrative: narrativeContent,
+        nibrs: { error: "NIBRS report generation failed" },
+        success: false,
+        message: "Narrative generated but NIBRS report failed"
+      }, { status: 200 });
     }
 
-    const processingTime = Date.now() - startTime;
+  } catch (error) {
+    console.log("[UNIFIED_REPORT_ERROR]", error);
     
-    // FIXED: Create a properly typed report event object
-    const reportEventData: any = {
-      userId: userId!,
-      reportType: "nibrs",
-      processingTime,
-      success: true,
-      templateUsed: selectedTemplate?.id || null,
-    };
-    
-    // Only add accuracyScore if it exists in your Prisma schema
-    // If your ReportEvent model doesn't have accuracyScore, remove this line
-    reportEventData.accuracyScore = accuracyScore;
-    
-    await trackReportEvent(reportEventData);
-    
-    await trackUserActivity({
-      userId: userId!,
-      activity: "report_created",
-      metadata: { 
-        reportType: "nibrs", 
-        templateUsed: selectedTemplate?.id,
-        accuracyScore: accuracyScore
-      },
-    });
-    
-    if (!isPro) await increaseAPiLimit();
-
-    // Save the human-readable narrative to history
-    await saveHistoryReport(
-      userId!,
-      `${Date.now()}`,
-      narrative,
-      "nibrs"
-    );
-    
-    return NextResponse.json(
-      {
-        narrative,
-        nibrs: data,
-        xml,
-        accuracyScore: accuracyScore,
-        warnings: warnings.length > 0 ? warnings : undefined
-      },
-      { status: 200 }
-    );
-  } catch (error: any) {
-    console.log("[NIBRS_REPORT_ERROR]", error?.message || error);
-    console.error("Full error:", error);
-
-    const processingTime = Date.now() - startTime;
     if (userId) {
-      // FIXED: Create a properly typed report event object for error case
-      const errorReportEventData: any = {
-        userId,
-        reportType: "nibrs",
-        processingTime,
+      await trackReportEvent({
+        userId: userId,
+        reportType: "dual_report",
+        processingTime: Date.now() - startTime,
         success: false,
-        error: error?.message || "Unknown error",
-      };
-      
-      await trackReportEvent(errorReportEventData);
-      
-      await trackUserActivity({
-        userId,
-        activity: "report_failed",
-        metadata: { reportType: "nibrs", error: error?.message || "Unknown error" },
+        error: error instanceof Error ? error.message : "Unknown error"
       });
     }
-
-    // Return standardized error response for internal errors
-    const errorResponse: StandardErrorResponse = {
-      error: error?.message || "Internal server error",
-      suggestions: ["Please try again or contact support if the issue persists"],
-      statusCode: 500
-    };
     
-    return NextResponse.json(errorResponse, { status: 500 });
+    return new NextResponse("Internal Error", { status: 500 });
   }
+}
+
+// Narrative Report Generation
+async function generateNarrativeReport(prompt: string, selectedTemplate: any): Promise<string> {
+  const systemInstructions = createNarrativeSystemInstructions(selectedTemplate);
+  
+  const messages: ChatCompletionMessageParam[] = [
+    { role: "system", content: systemInstructions },
+    ...(selectedTemplate?.examples ? [{ role: "system" as const, content: `EXAMPLE FORMAT:\n${selectedTemplate.examples}` }] : []),
+    { role: "user", content: `OFFICER NARRATIVE TO CONVERT:\n${prompt}` }
+  ];
+  
+  console.log("=== GENERATING NARRATIVE REPORT ===");
+  const response = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages,
+    temperature: 0.1
+  });
+
+  return response.choices[0].message.content || "";
+}
+
+// NIBRS Report Generation
+async function generateNIBRSReport(prompt: string): Promise<any> {
+  const messages: ChatCompletionMessageParam[] = [
+    { role: "system", content: NIBRS_TEMPLATE_INSTRUCTIONS },
+    { role: "user", content: prompt }
+  ];
+
+  console.log("=== GENERATING NIBRS REPORT ===");
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages,
+    temperature: 0.1,
+    response_format: { type: "json_object" }
+  });
+
+  const raw = completion.choices?.[0]?.message?.content ?? "";
+  let parsed: { extractedData: any; narrative: string };
+
+  try {
+    parsed = tryParseJSON(raw);
+  } catch (e: any) {
+    console.error("JSON parsing failed:", e.message);
+    throw new Error("NIBRS data extraction failed - invalid JSON format");
+  }
+
+  const descriptiveData = parsed.extractedData || {};
+  const narrative = (parsed.narrative || "").trim();
+
+  if (!narrative) {
+    throw new Error("Narrative missing from NIBRS extraction");
+  }
+
+  // Validate descriptive NIBRS data
+  const professionalValidation = validateDescriptiveNibrs({
+    ...descriptiveData,
+    offenses: descriptiveData.offenses || [],
+    victims: descriptiveData.victims || [],
+    offenders: descriptiveData.offenders || [],
+    properties: descriptiveData.properties || [],
+    narrative: narrative
+  });
+
+  if (professionalValidation.errors.length > 0) {
+    throw new Error(`NIBRS validation failed: ${professionalValidation.errors.join(', ')}`);
+  }
+
+  // Map to NIBRS codes
+  const mapperValidation = NibrsMapper.validateAndMapExtract({
+    ...descriptiveData,
+    narrative
+  });
+
+  if (mapperValidation.errors.length > 0) {
+    throw new Error(`NIBRS mapping failed: ${mapperValidation.errors.join(', ')}`);
+  }
+
+  const mapped = mapperValidation.data;
+
+  // Validate NIBRS payload
+  const { ok, data, errors, warnings: validationWarnings } = validateNibrsPayload(mapped);
+
+  console.log("NIBRS Validation result:", { ok, errors, warnings: validationWarnings });
+
+  const warnings: string[] = [...validationWarnings];
+  
+  if (!ok && errors.length > 0) {
+    throw new Error(`NIBRS payload validation failed: ${errors.join(', ')}`);
+  }
+
+  // Calculate accuracy score
+  const accuracyScore = calculateAccuracyScore(data || {}, errors, warnings);
+
+  // Validate with template
+  const templateErrors = validateWithTemplate(data || {});
+  if (templateErrors.length > 0) {
+    warnings.push(...templateErrors);
+  }
+
+  // Build XML
+  const xml = buildNIBRSXML(data);
+
+  return {
+    nibrs: data,
+    xml,
+    accuracyScore,
+    warnings
+  };
 }

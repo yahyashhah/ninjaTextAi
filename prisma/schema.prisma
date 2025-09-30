@@ -258,6 +258,15 @@ model DepartmentReport {
   updatedAt        DateTime @updatedAt
   submittedAt      DateTime?
   reviewedAt       DateTime?
+  rawText           String?  
+  finalNarrative    String? 
+  nibrsClassification Json?
+  nibrsXml          String?  
+  processingStatus  String    @default("pending")
+  accuracyScore     Float?   
+  missingFields     String[]  
+  warnings          String[]
+  templateUsed      String?   
 
   reviewQueueItems ReviewQueueItem[]
 

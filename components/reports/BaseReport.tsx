@@ -28,6 +28,9 @@ export type Template = {
   instructions: string;
   reportTypes: string[];
   createdAt: string;
+  requiredFields?: string[];
+  fieldDefinitions?: any;
+  strictMode?: boolean;
 };
 
 interface BaseReportProps {
@@ -50,6 +53,10 @@ interface CorrectionData {
   warnings?: string[];
   missingFields?: string[];
   requiredLevel?: string;
+  type?: string;
+  isComplete?: boolean;
+  confidenceScore?: number;
+  source?: "nibrs" | "template";
 }
 
 const BaseReport = ({
@@ -72,23 +79,29 @@ const BaseReport = ({
   const [templates, setTemplates] = useState<Template[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<Template[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-  const [message, setMessage] = useState("");
+  
+  // Separate states for both reports
+  const [narrativeMessage, setNarrativeMessage] = useState("");
+  const [nibrsData, setNibrsData] = useState<any | null>(null);
+  const [xmlData, setXmlData] = useState<string | null>(null);
+  const [accuracyScore, setAccuracyScore] = useState<number | null>(null);
+  
   const [showTemplates, setShowTemplates] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [showRecordingControls, setShowRecordingControls] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [nibrs, setNibrs] = useState<any | null>(null);
-  const [xmlData, setXmlData] = useState<string | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [correctionData, setCorrectionData] = useState<CorrectionData | null>(null);
   
-  // New states for templates and modes
+  // Active tab for viewing results
+  const [activeReportTab, setActiveReportTab] = useState<'narrative' | 'nibrs'>('narrative');
+  
+  // States for templates and modes
   const [showDictationTemplate, setShowDictationTemplate] = useState(false);
   const [inputMode, setInputMode] = useState<'typing' | 'recording' | 'ready-to-record'>('typing');
-  const [isWriting, setIsWriting] = useState(false);
   const [reviewModal, setReviewModal] = useState<{
     isOpen: boolean; 
     fieldName: string; 
@@ -166,12 +179,12 @@ const BaseReport = ({
     ].join(':');
   };
 
-  // Start recording handler - ONLY shows recording controls, doesn't start recording immediately
+  // Start recording handler
   const prepareRecording = () => {
-  setInputMode('ready-to-record');
-  setShowRecordingControls(true);
-  setShowDictationTemplate(false);
-};
+    setInputMode('ready-to-record');
+    setShowRecordingControls(true);
+    setShowDictationTemplate(false);
+  };
 
   // Actually start recording when user clicks "Start Recording"
   const startRecording = () => {
@@ -328,19 +341,15 @@ const BaseReport = ({
   const handleReviewSelect = (selectedOption: string, segment?: string, field?: string) => {
     let newText = selectedOption;
     
-    // Add context if we have segment and field info
     if (segment && field) {
-      // Format the insertion based on the field type
       newText = formatFieldInsertion(segment, field, selectedOption);
     } else if (field) {
-      // Direct field selection from DictationTemplate buttons
       newText = formatFieldInsertion('direct', field, selectedOption);
     }
     
     const updatedPrompt = `${prompt} ${newText}`.trim();
     setPrompt(updatedPrompt);
     
-    // Close the modal and reset state
     setReviewModal({ 
       isOpen: false, 
       fieldName: "", 
@@ -352,7 +361,6 @@ const BaseReport = ({
 
   // Helper function to format field insertions appropriately
   const formatFieldInsertion = (segment: string, field: string, value: string): string => {
-    // Custom formatting based on field type
     const formattingRules: { [key: string]: string } = {
       'incidentType': `a ${value} incident`,
       'victimAge': `a ${value}`,
@@ -393,7 +401,6 @@ const BaseReport = ({
         const endPos = textarea.selectionEnd;
         const newText = prev.substring(0, startPos) + snippet + prev.substring(endPos);
         
-        // Set cursor position after inserted text
         setTimeout(() => {
           textarea.focus();
           textarea.setSelectionRange(startPos + snippet.length, startPos + snippet.length);
@@ -414,24 +421,21 @@ const BaseReport = ({
     };
   }, []);
 
-  // Simplified review detection - just look for the word "review"
+  // Simplified review detection
   useEffect(() => {
     if (isListening && transcript) {
       const currentText = transcript.toLowerCase();
       const lastText = lastTranscriptRef.current.toLowerCase();
       
-      // Simple "review" detection
       if (currentText.includes(' review') && !lastText.includes(' review')) {
         console.log('=== REVIEW DETECTED ===');
         
-        // Show the hierarchical review modal starting with segment selection
         setReviewModal({
           isOpen: true,
           fieldName: "segmentSelection",
           options: []
         });
         
-        // Clean the transcript by removing "review" to avoid duplication
         const cleanTranscript = transcript.replace(/\s*review\b\s*/gi, ' ').trim();
         if (cleanTranscript !== transcript) {
           setPrompt(prev => prev + ' ' + cleanTranscript);
@@ -440,7 +444,6 @@ const BaseReport = ({
         }
       }
       
-      // Normal transcript processing
       if (transcript !== lastTranscriptRef.current) {
         if (lastTranscriptRef.current && transcript.startsWith(lastTranscriptRef.current)) {
           const newContent = transcript.slice(lastTranscriptRef.current.length);
@@ -466,8 +469,9 @@ const BaseReport = ({
     const fetchTemplates = async () => {
       try {
         const response = await axios.post('/api/filter_template', {
-          reportTypes: [reportType],
+          reportTypes: ['accident report', 'accident_report'],
         });
+        
         const sortedTemplates = response.data.templates.sort((a: Template, b: Template) => {
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
@@ -501,21 +505,28 @@ const BaseReport = ({
       setIsLoading(true);
       setCorrectionData(null);
 
-      const response = await axios.post(apiEndpoint, {
+      const response = await axios.post('/api/accident_report', {
         prompt: prompt.trim(),
         selectedTemplate: selectedTemplate || undefined,
-        correctedData
+        correctedData,
+        generateBoth: true
       });
 
-      setMessage(response.data.narrative);
-      setNibrs(response.data.nibrs);
-      setXmlData(response.data.xml);
-
-      toast({
-        title: "Success",
-        description: "Report generated with corrected data",
-        variant: "default",
-      });
+      // Handle dual report response
+      if (response.data.narrative && response.data.nibrs) {
+        setNarrativeMessage(response.data.narrative);
+        setNibrsData(response.data.nibrs);
+        setXmlData(response.data.xml || null);
+        setAccuracyScore(response.data.accuracyScore || null);
+        
+        toast({
+          title: "Success",
+          description: "Both reports generated successfully with corrected data",
+          variant: "default",
+        });
+      } else {
+        throw new Error("Incomplete response from server");
+      }
 
     } catch (error: any) {
       console.error("Correction error:", error);
@@ -529,90 +540,144 @@ const BaseReport = ({
     }
   };
 
-  // Main form submission
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
-    try {
-      setIsLoading(true);
-      
-      if (!prompt.trim()) {
-        toast({
-          title: "Empty Content",
-          description: "Please provide some details",
-          variant: "destructive",
-        });
-        return;
-      }
+  // Main form submission - GENERATES BOTH REPORTS
+  // In BaseReport component - update the onSubmit function
+const onSubmit = async (values: z.infer<typeof formSchema>) => {
+  try {
+    setIsLoading(true);
+    
+    if (!prompt.trim()) {
+      toast({
+        title: "Empty Content",
+        description: "Please provide some details",
+        variant: "destructive",
+      });
+      return;
+    }
 
-      const dataToSend = {
-        ...values,
-        prompt: prompt.trim(),
-        selectedTemplate: selectedTemplate || undefined,
-      };
+    const dataToSend = {
+      ...values,
+      prompt: prompt.trim(),
+      selectedTemplate: selectedTemplate || undefined,
+      generateBoth: true
+    };
 
-      const response = await axios.post(apiEndpoint, dataToSend, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
+    console.log("Submitting for dual report generation...");
+
+    const response = await axios.post('/api/accident_report', dataToSend, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    // Handle BOTH types of validation errors
+    if (response.data.type === "validation_error" || response.data.type === "nibrs_validation_error") {
+      setCorrectionData({
+        type: response.data.type,
+        error: response.data.error,
+        missingFields: response.data.missingFields || [],
+        suggestions: response.data.suggestions || [],
+        warnings: response.data.warnings || [],
+        nibrsData: response.data.nibrsData || {},
+        isComplete: response.data.isComplete,
+        confidenceScore: response.data.confidenceScore,
+        source: response.data.source // Pass the error source
       });
 
-      if (!response.data?.narrative || !response.data?.nibrs || !response.data?.xml) {
-        throw new Error("Unexpected API response format");
-      }
+      const errorTitle = response.data.type === "validation_error" 
+        ? "Template Requirements" 
+        : "NIBRS Standards";
+        
+      toast({
+        title: errorTitle,
+        description: "Please provide the missing information",
+        variant: "default",
+        duration: 5000,
+      });
+      return;
+    }
 
-      setMessage(response.data.narrative);
-      setNibrs(response.data.nibrs);
-      setXmlData(response.data.xml);
+    // Handle dual report success
+    if (response.data.narrative && response.data.nibrs) {
+      setNarrativeMessage(response.data.narrative);
+      setNibrsData(response.data.nibrs);
+      setXmlData(response.data.xml || null);
+      setAccuracyScore(response.data.accuracyScore || null);
       setPrompt("");
       form.reset();
       setSelectedTemplate(null);
       setInputMode('typing');
       setShowDictationTemplate(false);
-      // setIsWriting(false);
       setShowRecordingControls(false);
 
-    } catch (error: any) {
-      console.error("Submission error:", error);
-      
-      if (error.response?.status === 400 && error.response.data) {
-        const {
-          error: apiError,
-          nibrs: nibrsData,
-          mappingConfidence,
-          correctionContext,
-          warnings,
-          missingFields,
-          requiredLevel,
-          suggestions
-        } = error.response.data;
-
-        setCorrectionData({
-          error: apiError,
-          nibrsData: nibrsData || {},
-          confidence: mappingConfidence || {},
-          correctionContext: correctionContext || {},
-          warnings: warnings || [],
-          missingFields: missingFields || [],
-          requiredLevel: requiredLevel || "",
-          suggestions: suggestions || []
-        });
-
-        toast({
-          title: "Correction Needed",
-          description: "Please review the report details",
-          variant: "default",
-          duration: 5000,
-        });
-      } else {
-        toast({
-          title: "Submission Error",
-          description: error.response?.data?.message || error.message || "Failed to submit report",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      setIsLoading(false);
+      toast({
+        title: "Success!",
+        description: "Both narrative and NIBRS reports generated successfully",
+        variant: "default",
+      });
+    } else {
+      throw new Error("Unexpected API response format");
     }
+
+  } catch (error: any) {
+    console.error("Submission error:", error);
+    
+    if (error.response?.status === 400 && error.response.data) {
+      // Handle NIBRS-specific validation errors from older format
+      const {
+        error: apiError,
+        nibrs: nibrsData,
+        mappingConfidence,
+        correctionContext,
+        warnings,
+        missingFields,
+        requiredLevel,
+        suggestions
+      } = error.response.data;
+
+      setCorrectionData({
+        error: apiError,
+        nibrsData: nibrsData || {},
+        confidence: mappingConfidence || {},
+        correctionContext: correctionContext || {},
+        warnings: warnings || [],
+        missingFields: missingFields || [],
+        requiredLevel: requiredLevel || "",
+        suggestions: suggestions || [],
+        source: "nibrs"
+      });
+
+      toast({
+        title: "Correction Needed",
+        description: "Please review the report details",
+        variant: "default",
+        duration: 5000,
+      });
+    } else {
+      toast({
+        title: "Submission Error",
+        description: error.response?.data?.message || error.message || "Failed to submit report",
+        variant: "destructive",
+      });
+    }
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  // Handle adding missing information from validation
+  const handleAddMissingInfo = (field: string) => {
+    const fieldPrompt = `Please provide information about ${field}: `;
+    setPrompt(prev => prev + " " + fieldPrompt);
+    setCorrectionData(null);
+    
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 100);
   };
+
+  // Check if we have both reports
+  const hasBothReports = narrativeMessage && nibrsData;
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] bg-gray-50">
@@ -637,6 +702,7 @@ const BaseReport = ({
           correctionContext={correctionData.correctionContext}
           onCorrect={handleCorrectionSubmit}
           onCancel={() => setCorrectionData(null)}
+          onAddMissingInfo={correctionData.type === "validation_error" ? handleAddMissingInfo : undefined}
         />
       )}
       
@@ -662,13 +728,13 @@ const BaseReport = ({
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        {inputMode === 'typing' && !message && !isLoading && (
-  <WritingTemplate
-    isVisible={true}
-    onInsertSnippet={handleInsertSnippet}
-    onFieldHelp={handleFieldReview}
-  />
-)}
+        {inputMode === 'typing' && !hasBothReports && !isLoading && (
+          <WritingTemplate
+            isVisible={true}
+            onInsertSnippet={handleInsertSnippet}
+            onFieldHelp={handleFieldReview}
+          />
+        )}
 
         {/* Show DictationTemplate only when actively recording */}
         {inputMode === 'recording' && (
@@ -692,34 +758,77 @@ const BaseReport = ({
           <div className="max-w-4xl mx-auto h-64 flex flex-col items-center justify-center rounded-lg">
             <Loader />
             <p className="mt-4 text-sm text-gray-500 text-center max-w-md">
-              Generating Your Report...<br />
+              Generating Both Reports...<br />
+              Creating narrative report and NIBRS report simultaneously.<br />
               This may take a few seconds. Please don't close the tab.
             </p>
           </div>
-        ) : message ? (
-          <div className="max-w-4xl mx-auto">
-            {selectedTemplate && (
-              <TemplateSelector
-                selectedTemplate={selectedTemplate}
-                setSelectedTemplate={setSelectedTemplate}
-                filteredTemplates={filteredTemplates}
-                router={router}
-                setSearchTerm={setSearchTerm}
-                setShowTemplates={setShowTemplates}
-              />
+        ) : hasBothReports ? (
+          <div className="max-w-6xl mx-auto">
+            {/* Report Type Tabs */}
+            <div className="mb-6 bg-white p-4 rounded-lg border shadow-sm">
+              <div className="flex border-b border-gray-200">
+                <button
+                  className={`px-4 py-2 font-medium transition-colors duration-200 ${
+                    activeReportTab === 'narrative'
+                      ? 'border-b-2 border-blue-600 text-blue-700'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  onClick={() => setActiveReportTab('narrative')}
+                >
+                  Narrative Report
+                </button>
+                <button
+                  className={`px-4 py-2 font-medium transition-colors duration-200 ${
+                    activeReportTab === 'nibrs'
+                      ? 'border-b-2 border-green-600 text-green-700'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  onClick={() => setActiveReportTab('nibrs')}
+                >
+                  NIBRS Report
+                </button>
+              </div>
+            </div>
+
+            {/* Narrative Report Tab */}
+            {activeReportTab === 'narrative' && (
+              <div className="space-y-6">
+                {selectedTemplate && (
+                  <TemplateSelector
+                    selectedTemplate={selectedTemplate}
+                    setSelectedTemplate={setSelectedTemplate}
+                    filteredTemplates={filteredTemplates}
+                    router={router}
+                    setSearchTerm={setSearchTerm}
+                    setShowTemplates={setShowTemplates}
+                  />
+                )}
+                
+                <ReportOutput
+                  message={narrativeMessage}
+                  reportType={reportType}
+                />
+              </div>
             )}
-            
-            {nibrs && (
-              <NibrsSummary 
-                nibrs={nibrs}
-                xmlData={xmlData}
-              />
+
+            {/* NIBRS Report Tab */}
+            {activeReportTab === 'nibrs' && (
+              <div className="space-y-6">
+                <NibrsSummary 
+                  nibrs={nibrsData}
+                  xmlData={xmlData}
+                />
+                
+                {/* Also show the narrative in NIBRS tab for context */}
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <h3 className="font-medium text-yellow-800 mb-2">Associated Narrative</h3>
+                  <div className="bg-white p-4 rounded border">
+                    <p className="text-sm whitespace-pre-wrap">{narrativeMessage}</p>
+                  </div>
+                </div>
+              </div>
             )}
-            
-            <ReportOutput
-              message={message}
-              reportType={reportType}
-            />
           </div>
         ) : !selectedTemplate ? (
           <TemplateSelectionUI
@@ -749,7 +858,7 @@ const BaseReport = ({
       {/* Input Section with Recording Controls */}
       <div className="bg-white px-4 py-3 border-t relative">
         {/* Show RecordingControls when in 'ready-to-record' mode */}
-        {inputMode === 'ready-to-record' && !message && !isLoading && (
+        {inputMode === 'ready-to-record' && !hasBothReports && !isLoading && (
           <RecordingControls
             showRecordingControls={showRecordingControls}
             isPaused={isPaused}
@@ -769,7 +878,7 @@ const BaseReport = ({
           />
         )}
 
-        {!message && !isLoading && (
+        {!hasBothReports && !isLoading && (
           <PromptInput
             form={form}
             onSubmit={onSubmit}
@@ -787,21 +896,19 @@ const BaseReport = ({
             handleDrop={handleDrop}
             selectedFile={selectedFile}
             setSelectedFile={setSelectedFile}
-            // New props for mode switching
             inputMode={inputMode}
             onSwitchMode={(mode) => {
               if (mode === 'recording') {
-                prepareRecording(); // Show recording controls but don't start recording yet
+                prepareRecording();
               } else {
                 setInputMode('typing');
                 setShowRecordingControls(false);
-                // setIsWriting(true);
               }
             }}
             onWritingStart={() => {
-  setInputMode('typing');
-  setShowRecordingControls(false);
-}}
+              setInputMode('typing');
+              setShowRecordingControls(false);
+            }}
           />
         )}
       </div>
