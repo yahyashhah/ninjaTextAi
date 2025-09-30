@@ -145,6 +145,11 @@ model UploadTemplates {
   instructions String?
   examples     String?
   reportTypes  String[]
+  
+  requiredFields String[]
+  fieldDefinitions Json?
+  strictMode      Boolean @default(true)
+  
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -245,7 +250,6 @@ model DepartmentReport {
   title            String
   content          String
   nibrsData        String?
-  accuracyScore    Float    @default(100.0)
   status           String   @default("draft")
   flagged          Boolean  @default(false)
   flagReason       String?
@@ -253,6 +257,15 @@ model DepartmentReport {
   updatedAt        DateTime @updatedAt
   submittedAt      DateTime?
   reviewedAt       DateTime?
+  rawText           String?  
+  finalNarrative    String? 
+  nibrsClassification Json?
+  nibrsXml          String?  
+  processingStatus  String    @default("pending")
+  accuracyScore     Float?   
+  missingFields     String[]  
+  warnings          String[]
+  templateUsed      String?   
 
   reviewQueueItems ReviewQueueItem[]
 

@@ -19,6 +19,7 @@ import RecordingControls from "./RecordingControls";
 import PromptInput from "./PromptInput";
 import CorrectionUI from "./CorrectionUI";
 import DictationTemplate from "./DictationTemplate";
+import WritingTemplate from "./WritingTemplate";
 import ReviewModal from "./ReviewModal";
 
 export type Template = {
@@ -27,6 +28,9 @@ export type Template = {
   instructions: string;
   reportTypes: string[];
   createdAt: string;
+  requiredFields?: string[];
+  fieldDefinitions?: any;
+  strictMode?: boolean;
 };
 
 interface BaseReportProps {
@@ -49,6 +53,10 @@ interface CorrectionData {
   warnings?: string[];
   missingFields?: string[];
   requiredLevel?: string;
+  type?: string;
+  isComplete?: boolean;
+  confidenceScore?: number;
+  source?: "nibrs" | "template";
 }
 
 const BaseReport = ({
@@ -71,22 +79,36 @@ const BaseReport = ({
   const [templates, setTemplates] = useState<Template[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<Template[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-  const [message, setMessage] = useState("");
+  
+  // Separate states for both reports
+  const [narrativeMessage, setNarrativeMessage] = useState("");
+  const [nibrsData, setNibrsData] = useState<any | null>(null);
+  const [xmlData, setXmlData] = useState<string | null>(null);
+  const [accuracyScore, setAccuracyScore] = useState<number | null>(null);
+  
   const [showTemplates, setShowTemplates] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [showRecordingControls, setShowRecordingControls] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [nibrs, setNibrs] = useState<any | null>(null);
-  const [xmlData, setXmlData] = useState<string | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [correctionData, setCorrectionData] = useState<CorrectionData | null>(null);
   
-  // New states for dictation template
+  // Active tab for viewing results
+  const [activeReportTab, setActiveReportTab] = useState<'narrative' | 'nibrs'>('narrative');
+  
+  // States for templates and modes
   const [showDictationTemplate, setShowDictationTemplate] = useState(false);
-  const [reviewModal, setReviewModal] = useState<{isOpen: boolean; fieldName: string; options: string[]}>({
+  const [inputMode, setInputMode] = useState<'typing' | 'recording' | 'ready-to-record'>('typing');
+  const [reviewModal, setReviewModal] = useState<{
+    isOpen: boolean; 
+    fieldName: string; 
+    options: string[];
+    currentSegment?: string;
+    currentField?: string;
+  }>({
     isOpen: false,
     fieldName: "",
     options: []
@@ -105,7 +127,7 @@ const BaseReport = ({
     },
   });
 
-  // Complete field options for when officer says "review"
+  // Field options for DictationTemplate buttons
   const fieldOptions = {
     incidentType: ["Burglary", "Assault", "Theft", "Robbery", "Vandalism", "Domestic Violence", "Drug Offense", "Traffic Incident", "Other"],
     victimGender: ["Male", "Female", "Unknown"],
@@ -157,210 +179,27 @@ const BaseReport = ({
     ].join(':');
   };
 
-  // Improved function to identify current field being dictated
-  // Replace the identifyCurrentField function in BaseReport with this:
-const identifyCurrentField = (currentText: string, transcriptWithReview: string) => {
-  if (!currentText || currentText.length < 5) return null;
-  
-  console.log('Identifying field for text:', currentText);
-  console.log('Full transcript:', transcriptWithReview);
-  
-  const text = currentText.toLowerCase();
-  const fullText = transcriptWithReview.toLowerCase();
-  
-  // Extract the last sentence or phrase before "review"
-  const sentences = fullText.split(/[.!?]+/);
-  const lastSentence = sentences[sentences.length - 2] || sentences[sentences.length - 1] || ''; // Sentence before review
-  const words = lastSentence.trim().split(/\s+/);
-  
-  console.log('Last sentence before review:', lastSentence);
-  console.log('Words in last sentence:', words);
-  
-  // Field detection with context patterns - ordered by specificity
-  const fieldPatterns = [
-    // High specificity patterns (exact phrases)
-    {
-      field: "incidentType",
-      patterns: [
-        { trigger: "in reference to", context: 5 },
-        { trigger: "type of incident", context: 3 },
-        { trigger: "regarding", context: 3 }
-      ],
-      test: (sentence: string) => sentence.includes("reference to") || sentence.includes("type of incident")
-    },
-    {
-      field: "victimGender",
-      patterns: [
-        { trigger: "year-old", context: 2 },
-        { trigger: "male", context: 1 },
-        { trigger: "female", context: 1 }
-      ],
-      test: (sentence: string) => sentence.includes("year-old") || sentence.includes("male") || sentence.includes("female")
-    },
-    {
-      field: "race",
-      patterns: [
-        { trigger: "race is", context: 2 },
-        { trigger: "race", context: 3 }
-      ],
-      test: (sentence: string) => sentence.includes("race")
-    },
-    {
-      field: "ethnicity",
-      patterns: [
-        { trigger: "ethnicity", context: 3 }
-      ],
-      test: (sentence: string) => sentence.includes("ethnicity")
-    },
-    {
-      field: "relationship",
-      patterns: [
-        { trigger: "relationship", context: 5 },
-        { trigger: "between victim", context: 3 }
-      ],
-      test: (sentence: string) => sentence.includes("relationship") || sentence.includes("victim and offender")
-    },
-    {
-      field: "offenseStatus",
-      patterns: [
-        { trigger: "offense was", context: 2 },
-        { trigger: "attempted", context: 1 },
-        { trigger: "completed", context: 1 }
-      ],
-      test: (sentence: string) => sentence.includes("offense was") || sentence.includes("attempted") || sentence.includes("completed")
-    },
-    {
-      field: "injuryType",
-      patterns: [
-        { trigger: "sustained", context: 3 },
-        { trigger: "injury", context: 2 }
-      ],
-      test: (sentence: string) => sentence.includes("sustained") || sentence.includes("injury")
-    },
-    {
-      field: "forceUsed",
-      patterns: [
-        { trigger: "used", context: 3 },
-        { trigger: "weapon", context: 2 },
-        { trigger: "force", context: 2 }
-      ],
-      test: (sentence: string) => sentence.includes("used") || sentence.includes("weapon") || sentence.includes("force")
-    },
-    {
-      field: "propertyLoss",
-      patterns: [
-        { trigger: "loss type", context: 3 },
-        { trigger: "stolen", context: 1 },
-        { trigger: "damaged", context: 1 }
-      ],
-      test: (sentence: string) => sentence.includes("loss type") || sentence.includes("stolen") || sentence.includes("damaged")
-    },
-    {
-      field: "arrestStatus",
-      patterns: [
-        { trigger: "arrested", context: 2 },
-        { trigger: "not arrested", context: 2 }
-      ],
-      test: (sentence: string) => sentence.includes("arrested")
-    },
-    {
-      field: "bodyCam",
-      patterns: [
-        { trigger: "body cam", context: 3 },
-        { trigger: "camera", context: 2 }
-      ],
-      test: (sentence: string) => sentence.includes("body cam") || sentence.includes("camera")
-    },
-    
-    // Medium specificity - field mentions
-    {
-      field: "location",
-      patterns: [
-        { trigger: "dispatched to", context: 4 },
-        { trigger: "arrived at", context: 3 }
-      ],
-      test: (sentence: string) => sentence.includes("dispatched") || sentence.includes("arrived")
-    },
-    {
-      field: "victimName",
-      patterns: [
-        { trigger: "contact with", context: 3 },
-        { trigger: "victim name", context: 2 }
-      ],
-      test: (sentence: string) => sentence.includes("contact with") || sentence.includes("victim name")
-    },
-    {
-      field: "victimAge",
-      patterns: [
-        { trigger: "year-old", context: 2 },
-        { trigger: "age", context: 3 }
-      ],
-      test: (sentence: string) => sentence.includes("year-old") || sentence.includes("age")
-    }
-  ];
-
-  // First, try to match based on the last sentence context
-  for (const fieldData of fieldPatterns) {
-    if (fieldData.test(lastSentence)) {
-      console.log('Matched field by sentence context:', fieldData.field);
-      return {
-        field: fieldData.field,
-        options: fieldOptions[fieldData.field as keyof typeof fieldOptions] || ["Unknown", "Not specified"]
-      };
-    }
-  }
-
-  // If no sentence context match, try word-based matching
-  for (const fieldData of fieldPatterns) {
-    for (const pattern of fieldData.patterns) {
-      if (lastSentence.includes(pattern.trigger)) {
-        console.log('Matched field by word pattern:', fieldData.field, 'with trigger:', pattern.trigger);
-        return {
-          field: fieldData.field,
-          options: fieldOptions[fieldData.field as keyof typeof fieldOptions] || ["Unknown", "Not specified"]
-        };
-      }
-    }
-  }
-
-  // Final fallback - check for keywords in recent words
-  const recentWords = words.slice(-5); // Last 5 words of the sentence
-  const keywordMap: { [key: string]: string } = {
-    'male': 'victimGender', 'female': 'victimGender',
-    'attempted': 'offenseStatus', 'completed': 'offenseStatus',
-    'stolen': 'propertyLoss', 'damaged': 'propertyLoss', 'recovered': 'propertyLoss',
-    'arrested': 'arrestStatus', 'weapon': 'forceUsed', 'injury': 'injuryType',
-    'race': 'race', 'ethnicity': 'ethnicity', 'relationship': 'relationship',
-    'camera': 'bodyCam', 'dispatched': 'location', 'arrived': 'location'
+  // Start recording handler
+  const prepareRecording = () => {
+    setInputMode('ready-to-record');
+    setShowRecordingControls(true);
+    setShowDictationTemplate(false);
   };
 
-  for (const word of recentWords) {
-    if (keywordMap[word]) {
-      console.log('Matched field by keyword:', keywordMap[word], 'from word:', word);
-      return {
-        field: keywordMap[word],
-        options: fieldOptions[keywordMap[word] as keyof typeof fieldOptions] || ["Unknown", "Not specified"]
-      };
-    }
-  }
-
-  console.log('No field detected for text:', lastSentence);
-  return null;
-};
-
-  // Start recording handler
+  // Actually start recording when user clicks "Start Recording"
   const startRecording = () => {
-  lastTranscriptRef.current = "";
-  startListening();
-  setIsListening(true);
-  setIsPaused(false);
-  setRecordingTime(0);
-  setShowRecordingControls(false); // Hide the start button
-  setShowDictationTemplate(true); // Show template with integrated controls
-  timerRef.current = setInterval(() => {
-    setRecordingTime(prev => prev + 1);
-  }, 1000);
-};
+    lastTranscriptRef.current = "";
+    startListening();
+    setIsListening(true);
+    setIsPaused(false);
+    setRecordingTime(0);
+    setShowRecordingControls(false);
+    setShowDictationTemplate(true);
+    setInputMode('recording');
+    timerRef.current = setInterval(() => {
+      setRecordingTime(prev => prev + 1);
+    }, 1000);
+  };
 
   // Pause recording handler
   const pauseRecording = () => {
@@ -382,17 +221,17 @@ const identifyCurrentField = (currentText: string, transcriptWithReview: string)
   };
 
   // Stop recording handler
-  // In BaseReport, update the stopRecording function:
-const stopRecording = () => {
-  stopListening();
-  setIsListening(false);
-  setIsPaused(false);
-  setShowRecordingControls(false);
-  setShowDictationTemplate(false); // Hide template when stopped
-  if (timerRef.current) {
-    clearInterval(timerRef.current);
-  }
-};
+  const stopRecording = () => {
+    stopListening();
+    setIsListening(false);
+    setIsPaused(false);
+    setShowRecordingControls(false);
+    setShowDictationTemplate(false);
+    setInputMode('typing');
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+  };
 
   // Handle file upload
   const handleFileUpload = async (file: File) => {
@@ -488,20 +327,89 @@ const stopRecording = () => {
     form.handleSubmit(onSubmit)();
   };
 
-  // Handle field review requests
+  // Handle field review requests from DictationTemplate buttons
   const handleFieldReview = (fieldName: string, options: string[]) => {
     setReviewModal({
       isOpen: true,
-      fieldName,
-      options: Array.isArray(options) ? options : ["Unknown", "Not specified"]
+      fieldName: "fieldSelection",
+      options: options,
+      currentField: fieldName
     });
   };
 
-  // Handle review selection
-  const handleReviewSelect = (selectedOption: string) => {
-    const newText = `${prompt} ${selectedOption}`;
-    setPrompt(newText);
-    setReviewModal({ isOpen: false, fieldName: "", options: [] });
+  // Handle review selection with hierarchical support
+  const handleReviewSelect = (selectedOption: string, segment?: string, field?: string) => {
+    let newText = selectedOption;
+    
+    if (segment && field) {
+      newText = formatFieldInsertion(segment, field, selectedOption);
+    } else if (field) {
+      newText = formatFieldInsertion('direct', field, selectedOption);
+    }
+    
+    const updatedPrompt = `${prompt} ${newText}`.trim();
+    setPrompt(updatedPrompt);
+    
+    setReviewModal({ 
+      isOpen: false, 
+      fieldName: "", 
+      options: [],
+      currentSegment: undefined,
+      currentField: undefined
+    });
+  };
+
+  // Helper function to format field insertions appropriately
+  const formatFieldInsertion = (segment: string, field: string, value: string): string => {
+    const formattingRules: { [key: string]: string } = {
+      'incidentType': `a ${value} incident`,
+      'victimAge': `a ${value}`,
+      'victimGender': `${value}`,
+      'offenseStatus': `${value}`,
+      'arrestStatus': `${value}`,
+      'bodyCam': `${value}`,
+      'location': `${value}`,
+      'race': `${value}`,
+      'ethnicity': `${value}`,
+      'relationship': `${value}`,
+      'injuryType': `${value} injury`,
+      'forceUsed': `${value}`,
+      'propertyLoss': `${value}`,
+      'victimName': `${value}`,
+      'suspectAge': `${value}`,
+      'statute': `${value}`,
+      'offenseDescription': `${value}`,
+      'clothing': `${value} clothing`,
+      'physicalDescription': `${value}`,
+      'offenderCount': `${value} offender(s)`,
+      'propertyItems': `${value}`,
+      'propertyDescription': `${value}`,
+      'propertyValue': `${value}`,
+      'arrestType': `${value}`,
+      'charges': `${value}`
+    };
+    
+    return formattingRules[field] || value;
+  };
+
+  // Handle snippet insertion for writing mode
+  const handleInsertSnippet = (snippet: string) => {
+    setPrompt(prev => {
+      if (textareaRef.current) {
+        const textarea = textareaRef.current;
+        const startPos = textarea.selectionStart;
+        const endPos = textarea.selectionEnd;
+        const newText = prev.substring(0, startPos) + snippet + prev.substring(endPos);
+        
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(startPos + snippet.length, startPos + snippet.length);
+        }, 0);
+        
+        return newText;
+      }
+      return prev + snippet;
+    });
   };
 
   // Clean up timer on unmount
@@ -513,68 +421,40 @@ const stopRecording = () => {
     };
   }, []);
 
-  // Replace the transcript useEffect in BaseReport with this:
-useEffect(() => {
-  if (isListening && transcript) {
-    const currentText = transcript.toLowerCase();
-    const lastText = lastTranscriptRef.current.toLowerCase();
-    
-    // Improved "review" detection - check if "review" was just spoken
-    if (currentText.includes(' review') && !lastText.includes(' review')) {
-      console.log('=== REVIEW DETECTED ===');
-      console.log('Current transcript:', transcript);
-      console.log('Previous transcript:', lastTranscriptRef.current);
+  // Simplified review detection
+  useEffect(() => {
+    if (isListening && transcript) {
+      const currentText = transcript.toLowerCase();
+      const lastText = lastTranscriptRef.current.toLowerCase();
       
-      // Use a timeout to ensure the speech is fully processed
-      setTimeout(() => {
-        // Get the text that was spoken before "review"
-        const textBeforeReview = transcript.replace(/\s*review.*$/i, '').trim();
-        console.log('Text before review:', textBeforeReview);
+      if (currentText.includes(' review') && !lastText.includes(' review')) {
+        console.log('=== REVIEW DETECTED ===');
         
-        if (textBeforeReview) {
-          const currentField = identifyCurrentField(textBeforeReview, transcript);
-          
-          if (currentField) {
-            console.log('🎯 Detected field for review:', currentField.field);
-            console.log('📋 Available options:', currentField.options);
-            
-            handleFieldReview(currentField.field, currentField.options);
-            
-            // Clean the transcript by removing "review" to avoid duplication
-            const cleanTranscript = transcript.replace(/\s*review\b\s*/gi, ' ').trim();
-            if (cleanTranscript !== transcript) {
-              setPrompt(prev => {
-                const newPrompt = prev + ' ' + cleanTranscript;
-                console.log('Updated prompt:', newPrompt);
-                return newPrompt;
-              });
-              lastTranscriptRef.current = cleanTranscript;
-              return;
-            }
-          } else {
-            console.log('❌ No specific field detected for review');
-            // Show generic options if no specific field detected
-            handleFieldReview('general', fieldOptions.general);
-          }
-        } else {
-          console.log('⚠️ No text before review found');
-          handleFieldReview('general', fieldOptions.general);
+        setReviewModal({
+          isOpen: true,
+          fieldName: "segmentSelection",
+          options: []
+        });
+        
+        const cleanTranscript = transcript.replace(/\s*review\b\s*/gi, ' ').trim();
+        if (cleanTranscript !== transcript) {
+          setPrompt(prev => prev + ' ' + cleanTranscript);
+          lastTranscriptRef.current = cleanTranscript;
+          return;
         }
-      }, 300); // Slightly longer delay for better detection
-    }
-    
-    // Normal transcript processing
-    if (transcript !== lastTranscriptRef.current) {
-      if (lastTranscriptRef.current && transcript.startsWith(lastTranscriptRef.current)) {
-        const newContent = transcript.slice(lastTranscriptRef.current.length);
-        setPrompt(prev => prev + newContent);
-      } else {
-        setPrompt(transcript);
       }
-      lastTranscriptRef.current = transcript;
+      
+      if (transcript !== lastTranscriptRef.current) {
+        if (lastTranscriptRef.current && transcript.startsWith(lastTranscriptRef.current)) {
+          const newContent = transcript.slice(lastTranscriptRef.current.length);
+          setPrompt(prev => prev + newContent);
+        } else {
+          setPrompt(transcript);
+        }
+        lastTranscriptRef.current = transcript;
+      }
     }
-  }
-}, [transcript, isListening]);
+  }, [transcript, isListening]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -589,8 +469,9 @@ useEffect(() => {
     const fetchTemplates = async () => {
       try {
         const response = await axios.post('/api/filter_template', {
-          reportTypes: [reportType],
+          reportTypes: ['accident report', 'accident_report'],
         });
+        
         const sortedTemplates = response.data.templates.sort((a: Template, b: Template) => {
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
@@ -624,21 +505,28 @@ useEffect(() => {
       setIsLoading(true);
       setCorrectionData(null);
 
-      const response = await axios.post(apiEndpoint, {
+      const response = await axios.post('/api/accident_report', {
         prompt: prompt.trim(),
         selectedTemplate: selectedTemplate || undefined,
-        correctedData
+        correctedData,
+        generateBoth: true
       });
 
-      setMessage(response.data.narrative);
-      setNibrs(response.data.nibrs);
-      setXmlData(response.data.xml);
-
-      toast({
-        title: "Success",
-        description: "Report generated with corrected data",
-        variant: "default",
-      });
+      // Handle dual report response
+      if (response.data.narrative && response.data.nibrs) {
+        setNarrativeMessage(response.data.narrative);
+        setNibrsData(response.data.nibrs);
+        setXmlData(response.data.xml || null);
+        setAccuracyScore(response.data.accuracyScore || null);
+        
+        toast({
+          title: "Success",
+          description: "Both reports generated successfully with corrected data",
+          variant: "default",
+        });
+      } else {
+        throw new Error("Incomplete response from server");
+      }
 
     } catch (error: any) {
       console.error("Correction error:", error);
@@ -652,86 +540,144 @@ useEffect(() => {
     }
   };
 
-  // Main form submission
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
-    try {
-      setIsLoading(true);
-      
-      if (!prompt.trim()) {
-        toast({
-          title: "Empty Content",
-          description: "Please provide some details",
-          variant: "destructive",
-        });
-        return;
-      }
+  // Main form submission - GENERATES BOTH REPORTS
+  // In BaseReport component - update the onSubmit function
+const onSubmit = async (values: z.infer<typeof formSchema>) => {
+  try {
+    setIsLoading(true);
+    
+    if (!prompt.trim()) {
+      toast({
+        title: "Empty Content",
+        description: "Please provide some details",
+        variant: "destructive",
+      });
+      return;
+    }
 
-      const dataToSend = {
-        ...values,
-        prompt: prompt.trim(),
-        selectedTemplate: selectedTemplate || undefined,
-      };
+    const dataToSend = {
+      ...values,
+      prompt: prompt.trim(),
+      selectedTemplate: selectedTemplate || undefined,
+      generateBoth: true
+    };
 
-      const response = await axios.post(apiEndpoint, dataToSend, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
+    console.log("Submitting for dual report generation...");
+
+    const response = await axios.post('/api/accident_report', dataToSend, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    // Handle BOTH types of validation errors
+    if (response.data.type === "validation_error" || response.data.type === "nibrs_validation_error") {
+      setCorrectionData({
+        type: response.data.type,
+        error: response.data.error,
+        missingFields: response.data.missingFields || [],
+        suggestions: response.data.suggestions || [],
+        warnings: response.data.warnings || [],
+        nibrsData: response.data.nibrsData || {},
+        isComplete: response.data.isComplete,
+        confidenceScore: response.data.confidenceScore,
+        source: response.data.source // Pass the error source
       });
 
-      if (!response.data?.narrative || !response.data?.nibrs || !response.data?.xml) {
-        throw new Error("Unexpected API response format");
-      }
+      const errorTitle = response.data.type === "validation_error" 
+        ? "Template Requirements" 
+        : "NIBRS Standards";
+        
+      toast({
+        title: errorTitle,
+        description: "Please provide the missing information",
+        variant: "default",
+        duration: 5000,
+      });
+      return;
+    }
 
-      setMessage(response.data.narrative);
-      setNibrs(response.data.nibrs);
-      setXmlData(response.data.xml);
+    // Handle dual report success
+    if (response.data.narrative && response.data.nibrs) {
+      setNarrativeMessage(response.data.narrative);
+      setNibrsData(response.data.nibrs);
+      setXmlData(response.data.xml || null);
+      setAccuracyScore(response.data.accuracyScore || null);
       setPrompt("");
       form.reset();
       setSelectedTemplate(null);
+      setInputMode('typing');
+      setShowDictationTemplate(false);
+      setShowRecordingControls(false);
 
-    } catch (error: any) {
-      console.error("Submission error:", error);
-      
-      if (error.response?.status === 400 && error.response.data) {
-        const {
-          error: apiError,
-          nibrs: nibrsData,
-          mappingConfidence,
-          correctionContext,
-          warnings,
-          missingFields,
-          requiredLevel,
-          suggestions
-        } = error.response.data;
-
-        setCorrectionData({
-          error: apiError,
-          nibrsData: nibrsData || {},
-          confidence: mappingConfidence || {},
-          correctionContext: correctionContext || {},
-          warnings: warnings || [],
-          missingFields: missingFields || [],
-          requiredLevel: requiredLevel || "",
-          suggestions: suggestions || []
-        });
-
-        toast({
-          title: "Correction Needed",
-          description: "Please review the report details",
-          variant: "default",
-          duration: 5000,
-        });
-      } else {
-        toast({
-          title: "Submission Error",
-          description: error.response?.data?.message || error.message || "Failed to submit report",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      setIsLoading(false);
+      toast({
+        title: "Success!",
+        description: "Both narrative and NIBRS reports generated successfully",
+        variant: "default",
+      });
+    } else {
+      throw new Error("Unexpected API response format");
     }
+
+  } catch (error: any) {
+    console.error("Submission error:", error);
+    
+    if (error.response?.status === 400 && error.response.data) {
+      // Handle NIBRS-specific validation errors from older format
+      const {
+        error: apiError,
+        nibrs: nibrsData,
+        mappingConfidence,
+        correctionContext,
+        warnings,
+        missingFields,
+        requiredLevel,
+        suggestions
+      } = error.response.data;
+
+      setCorrectionData({
+        error: apiError,
+        nibrsData: nibrsData || {},
+        confidence: mappingConfidence || {},
+        correctionContext: correctionContext || {},
+        warnings: warnings || [],
+        missingFields: missingFields || [],
+        requiredLevel: requiredLevel || "",
+        suggestions: suggestions || [],
+        source: "nibrs"
+      });
+
+      toast({
+        title: "Correction Needed",
+        description: "Please review the report details",
+        variant: "default",
+        duration: 5000,
+      });
+    } else {
+      toast({
+        title: "Submission Error",
+        description: error.response?.data?.message || error.message || "Failed to submit report",
+        variant: "destructive",
+      });
+    }
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  // Handle adding missing information from validation
+  const handleAddMissingInfo = (field: string) => {
+    const fieldPrompt = `Please provide information about ${field}: `;
+    setPrompt(prev => prev + " " + fieldPrompt);
+    setCorrectionData(null);
+    
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 100);
   };
+
+  // Check if we have both reports
+  const hasBothReports = narrativeMessage && nibrsData;
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] bg-gray-50">
@@ -756,6 +702,7 @@ useEffect(() => {
           correctionContext={correctionData.correctionContext}
           onCorrect={handleCorrectionSubmit}
           onCancel={() => setCorrectionData(null)}
+          onAddMissingInfo={correctionData.type === "validation_error" ? handleAddMissingInfo : undefined}
         />
       )}
       
@@ -764,6 +711,8 @@ useEffect(() => {
         isOpen={reviewModal.isOpen}
         fieldName={reviewModal.fieldName}
         options={reviewModal.options}
+        currentSegment={reviewModal.currentSegment}
+        currentField={reviewModal.currentField}
         onSelect={handleReviewSelect}
         onClose={() => setReviewModal({ isOpen: false, fieldName: "", options: [] })}
       />
@@ -779,55 +728,107 @@ useEffect(() => {
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        {/* Dictation Template */}
-        <DictationTemplate
-  isVisible={showDictationTemplate}
-  onFieldReview={handleFieldReview}
-  completedSections={completedSections}
-  fieldOptions={fieldOptions}
-  // New recording control props
-  isRecording={isListening && !isPaused}
-  isPaused={isPaused}
-  recordingTime={recordingTime}
-  formatTime={formatTime}
-  onPauseRecording={pauseRecording}
-  onResumeRecording={resumeRecording}
-  onSubmitRecording={submitRecording}
-  onStopRecording={stopRecording} // Add this new prop
-/>
+        {inputMode === 'typing' && !hasBothReports && !isLoading && (
+          <WritingTemplate
+            isVisible={true}
+            onInsertSnippet={handleInsertSnippet}
+            onFieldHelp={handleFieldReview}
+          />
+        )}
+
+        {/* Show DictationTemplate only when actively recording */}
+        {inputMode === 'recording' && (
+          <DictationTemplate
+            isVisible={showDictationTemplate}
+            onFieldReview={handleFieldReview}
+            completedSections={completedSections}
+            fieldOptions={fieldOptions}
+            isRecording={isListening && !isPaused}
+            isPaused={isPaused}
+            recordingTime={recordingTime}
+            formatTime={formatTime}
+            onPauseRecording={pauseRecording}
+            onResumeRecording={resumeRecording}
+            onSubmitRecording={submitRecording}
+            onStopRecording={stopRecording}
+          />
+        )}
 
         {isLoading ? (
           <div className="max-w-4xl mx-auto h-64 flex flex-col items-center justify-center rounded-lg">
             <Loader />
             <p className="mt-4 text-sm text-gray-500 text-center max-w-md">
-              Generating Your Report...<br />
+              Generating Both Reports...<br />
+              Creating narrative report and NIBRS report simultaneously.<br />
               This may take a few seconds. Please don't close the tab.
             </p>
           </div>
-        ) : message ? (
-          <div className="max-w-4xl mx-auto">
-            {selectedTemplate && (
-              <TemplateSelector
-                selectedTemplate={selectedTemplate}
-                setSelectedTemplate={setSelectedTemplate}
-                filteredTemplates={filteredTemplates}
-                router={router}
-                setSearchTerm={setSearchTerm}
-                setShowTemplates={setShowTemplates}
-              />
+        ) : hasBothReports ? (
+          <div className="max-w-6xl mx-auto">
+            {/* Report Type Tabs */}
+            <div className="mb-6 bg-white p-4 rounded-lg border shadow-sm">
+              <div className="flex border-b border-gray-200">
+                <button
+                  className={`px-4 py-2 font-medium transition-colors duration-200 ${
+                    activeReportTab === 'narrative'
+                      ? 'border-b-2 border-blue-600 text-blue-700'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  onClick={() => setActiveReportTab('narrative')}
+                >
+                  Narrative Report
+                </button>
+                <button
+                  className={`px-4 py-2 font-medium transition-colors duration-200 ${
+                    activeReportTab === 'nibrs'
+                      ? 'border-b-2 border-green-600 text-green-700'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  onClick={() => setActiveReportTab('nibrs')}
+                >
+                  NIBRS Report
+                </button>
+              </div>
+            </div>
+
+            {/* Narrative Report Tab */}
+            {activeReportTab === 'narrative' && (
+              <div className="space-y-6">
+                {selectedTemplate && (
+                  <TemplateSelector
+                    selectedTemplate={selectedTemplate}
+                    setSelectedTemplate={setSelectedTemplate}
+                    filteredTemplates={filteredTemplates}
+                    router={router}
+                    setSearchTerm={setSearchTerm}
+                    setShowTemplates={setShowTemplates}
+                  />
+                )}
+                
+                <ReportOutput
+                  message={narrativeMessage}
+                  reportType={reportType}
+                />
+              </div>
             )}
-            
-            {nibrs && (
-              <NibrsSummary 
-                nibrs={nibrs}
-                xmlData={xmlData}
-              />
+
+            {/* NIBRS Report Tab */}
+            {activeReportTab === 'nibrs' && (
+              <div className="space-y-6">
+                <NibrsSummary 
+                  nibrs={nibrsData}
+                  xmlData={xmlData}
+                />
+                
+                {/* Also show the narrative in NIBRS tab for context */}
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <h3 className="font-medium text-yellow-800 mb-2">Associated Narrative</h3>
+                  <div className="bg-white p-4 rounded border">
+                    <p className="text-sm whitespace-pre-wrap">{narrativeMessage}</p>
+                  </div>
+                </div>
+              </div>
             )}
-            
-            <ReportOutput
-              message={message}
-              reportType={reportType}
-            />
           </div>
         ) : !selectedTemplate ? (
           <TemplateSelectionUI
@@ -856,7 +857,8 @@ useEffect(() => {
 
       {/* Input Section with Recording Controls */}
       <div className="bg-white px-4 py-3 border-t relative">
-        {!showDictationTemplate && !message && !isLoading && (
+        {/* Show RecordingControls when in 'ready-to-record' mode */}
+        {inputMode === 'ready-to-record' && !hasBothReports && !isLoading && (
           <RecordingControls
             showRecordingControls={showRecordingControls}
             isPaused={isPaused}
@@ -876,7 +878,7 @@ useEffect(() => {
           />
         )}
 
-        {!message && !isLoading && (
+        {!hasBothReports && !isLoading && (
           <PromptInput
             form={form}
             onSubmit={onSubmit}
@@ -894,6 +896,19 @@ useEffect(() => {
             handleDrop={handleDrop}
             selectedFile={selectedFile}
             setSelectedFile={setSelectedFile}
+            inputMode={inputMode}
+            onSwitchMode={(mode) => {
+              if (mode === 'recording') {
+                prepareRecording();
+              } else {
+                setInputMode('typing');
+                setShowRecordingControls(false);
+              }
+            }}
+            onWritingStart={() => {
+              setInputMode('typing');
+              setShowRecordingControls(false);
+            }}
           />
         )}
       </div>

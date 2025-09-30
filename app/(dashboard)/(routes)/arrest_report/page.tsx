@@ -29,7 +29,10 @@ import {
   ChevronsUpDown,
   BookText,
   X,
-  Info
+  Info,
+  AlertTriangle,
+  Check,
+  Loader2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -51,7 +54,19 @@ type Template = {
   templateName: string;
   instructions: string;
   reportTypes: string[];
+  requiredFields: string[];
+  fieldDefinitions: any;
+  strictMode: boolean;
   createdAt: string;
+};
+
+type ValidationError = {
+  type: "validation_error";
+  missingFields: string[];
+  presentFields: string[];
+  message: string;
+  isComplete: boolean;
+  confidenceScore: number;
 };
 
 const ArrestReport = () => {
@@ -71,6 +86,10 @@ const ArrestReport = () => {
   const [showRecordingControls, setShowRecordingControls] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [validationError, setValidationError] = useState<ValidationError | null>(null);
+  const [additionalInfo, setAdditionalInfo] = useState("");
+  const [isSubmittingAdditionalInfo, setIsSubmittingAdditionalInfo] = useState(false);
+  const [isAdditionalInfoModalOpen, setIsAdditionalInfoModalOpen] = useState(false);
   const timerRef = useRef<NodeJS.Timeout>();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -170,7 +189,7 @@ const ArrestReport = () => {
     const fetchTemplates = async () => {
       try {
         const response = await axios.post('/api/filter_template', {
-          reportTypes: ['arrest report'],
+          reportTypes: ['arrest report', 'arrest_report'],
         });
         const sortedTemplates = response.data.templates.sort((a: Template, b: Template) => {
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -201,6 +220,7 @@ const ArrestReport = () => {
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
       setIsLoading(true);
+      setValidationError(null);
       
       if (!prompt.trim()) {
         toast({
@@ -224,6 +244,13 @@ const ArrestReport = () => {
           'Content-Type': 'application/json',
         },
       });
+
+      // Handle validation error response
+      if (response.data.type === "validation_error") {
+        setValidationError(response.data);
+        setIsAdditionalInfoModalOpen(true);
+        return;
+      }
 
       if (!response.data?.content) {
         throw new Error("No content in response");
@@ -252,6 +279,59 @@ const ArrestReport = () => {
     }
   };
 
+  // Handle additional info submission - FIXED VERSION
+  const submitAdditionalInfo = async () => {
+    if (!additionalInfo.trim() || !validationError) return;
+
+    try {
+      setIsSubmittingAdditionalInfo(true);
+      
+      // Combine original prompt with additional info
+      const combinedPrompt = `${prompt}\n\nAdditional Information:\n${additionalInfo}`;
+      
+      const dataToSend = {
+        prompt: combinedPrompt,
+        selectedTemplate: selectedTemplate || undefined,
+      };
+
+      const response = await axios.post("/api/arrest_report", dataToSend);
+
+      if (response.data.type === "validation_error") {
+        setValidationError(response.data);
+        return;
+      }
+
+      setMessage(response.data.content);
+      setValidationError(null);
+      setAdditionalInfo("");
+      setPrompt("");
+      setIsAdditionalInfoModalOpen(false);
+
+      toast({
+        title: "Success",
+        description: "Report generated with additional information",
+        variant: "default",
+      });
+
+    } catch (error: any) {
+      console.error("Error submitting additional info:", error);
+      toast({
+        title: "Error",
+        description: "Failed to process additional information",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingAdditionalInfo(false);
+    }
+  };
+
+  // Close validation modal and reset state
+  const closeValidationModal = () => {
+    setValidationError(null);
+    setAdditionalInfo("");
+    setIsAdditionalInfoModalOpen(false);
+  };
+
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
@@ -260,8 +340,140 @@ const ArrestReport = () => {
     }
   }, [prompt]);
 
+  // Template requirements display
+  const renderTemplateRequirements = () => {
+    if (!selectedTemplate?.requiredFields?.length) return null;
+
+    return (
+      <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+        <div className="flex items-center gap-2 mb-2">
+          <ListChecks className="h-4 w-4 text-blue-600" />
+          <span className="text-sm font-medium text-blue-800">Template Requirements</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {selectedTemplate.requiredFields.map((field: string) => {
+            const fieldDef = selectedTemplate.fieldDefinitions?.[field];
+            return (
+              <div key={field} className="flex items-center gap-2 text-sm">
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <span className="text-blue-700">{fieldDef?.label || field}</span>
+                {fieldDef?.required && (
+                  <span className="text-xs text-red-500 font-medium">(Required)</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {selectedTemplate.strictMode && (
+          <p className="text-xs text-blue-600 mt-2">
+            ⚠️ Strict mode enabled: All required fields must be provided
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] bg-gray-50">
+      {/* Validation Error Modal - FIXED */}
+      {validationError && isAdditionalInfoModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Missing Information Required
+              </h3>
+              <button
+                onClick={closeValidationModal}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                  <span className="font-medium text-amber-700">Template Validation Failed</span>
+                </div>
+                <p className="text-gray-700 mb-4">{validationError.message}</p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <h4 className="font-medium text-sm text-gray-600 mb-2">Missing Fields:</h4>
+                    <div className="space-y-1">
+                      {validationError.missingFields.map(field => {
+                        const fieldDef = selectedTemplate?.fieldDefinitions?.[field];
+                        return (
+                          <div key={field} className="flex items-center gap-2 text-sm">
+                            <X className="h-4 w-4 text-red-500" />
+                            <span>{fieldDef?.label || field}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-sm text-gray-600 mb-2">Present Fields:</h4>
+                    <div className="space-y-1">
+                      {validationError.presentFields.map(field => {
+                        const fieldDef = selectedTemplate?.fieldDefinitions?.[field];
+                        return (
+                          <div key={field} className="flex items-center gap-2 text-sm">
+                            <Check className="h-4 w-4 text-green-500" />
+                            <span>{fieldDef?.label || field}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Please provide the missing information:
+                </label>
+                <textarea
+                  value={additionalInfo}
+                  onChange={(e) => setAdditionalInfo(e.target.value)}
+                  placeholder="Enter the missing details here. For example: 'The incident occurred on January 15, 2024 at 14:30 at 123 Main Street. The suspect was identified as John Doe, 35 years old.'"
+                  className="w-full h-32 p-3 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500 resize-vertical"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Be specific and include all missing details mentioned above.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={closeValidationModal}
+                  disabled={isSubmittingAdditionalInfo}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={submitAdditionalInfo}
+                  disabled={!additionalInfo.trim() || isSubmittingAdditionalInfo}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {isSubmittingAdditionalInfo ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Submit Additional Information'
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Help Modal */}
       {showHelpModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
@@ -287,6 +499,9 @@ const ArrestReport = () => {
               </p>
               <p>
                 <span className="font-semibold">3. Auto-Formatting:</span> System generates complete reports from your input.
+              </p>
+              <p>
+                <span className="font-semibold">4. Strict Validation:</span> Templates may require specific information. If missing, you'll be prompted to provide it.
               </p>
             </div>            
             <Button 
@@ -363,10 +578,13 @@ const ArrestReport = () => {
                         >
                           <FileText className="h-4 w-4 text-blue-500" />
                           <span>{template.templateName}</span>
+                          {template.strictMode && (
+                            <span className="text-xs text-red-500 ml-auto">Strict</span>
+                          )}
                         </DropdownMenuItem>
                       ))}
                       <DropdownMenuItem 
-                        onClick={() => router.push("/create-template")}
+                        onClick={() => router.push("/create_template")}
                         className="cursor-pointer flex items-center text-blue-600"
                       >
                         <Plus className="mr-2 h-4 w-4" />
@@ -381,6 +599,7 @@ const ArrestReport = () => {
                     setSelectedTemplate(null);
                     setSearchTerm("");
                     setShowTemplates(false);
+                    setMessage("");
                   }}
                   className="text-red-500 hover:text-red-700 flex items-center space-x-1"
                 >
@@ -451,6 +670,9 @@ const ArrestReport = () => {
                               <h3 className="font-medium text-gray-800">{template.templateName}</h3>
                               <p className="text-xs text-gray-400">
                                 {template.reportTypes.join(", ")}
+                                {template.strictMode && (
+                                  <span className="ml-2 text-red-500 font-medium">• Strict</span>
+                                )}
                               </p>
                             </div>
                           </div>
@@ -491,6 +713,9 @@ const ArrestReport = () => {
                     <Button variant="outline" className="flex items-center space-x-2">
                       <FileText className="h-4 w-4 text-blue-500" />
                       <span>{selectedTemplate.templateName}</span>
+                      {selectedTemplate.strictMode && (
+                        <span className="text-xs text-red-500 font-medium">Strict</span>
+                      )}
                       <ChevronDown className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -503,10 +728,13 @@ const ArrestReport = () => {
                       >
                         <FileText className="h-4 w-4 text-blue-500" />
                         <span>{template.templateName}</span>
+                        {template.strictMode && (
+                          <span className="text-xs text-red-500 ml-auto">Strict</span>
+                        )}
                       </DropdownMenuItem>
                     ))}
                     <DropdownMenuItem 
-                      onClick={() => router.push("/create-template")}
+                      onClick={() => router.push("/create_template")}
                       className="cursor-pointer flex items-center text-blue-600"
                     >
                       <Plus className="mr-2 h-4 w-4" />
@@ -528,20 +756,21 @@ const ArrestReport = () => {
                 <span>Change <span className="hidden md:inline">Template</span></span>
               </Button>
             </div>
+
+            {/* Template Requirements */}
+            {renderTemplateRequirements()}
           </div>
         )}
       </div>
 
-      {/* Input Section with Recording Controls */}
-      <div className="bg-white px-4 py-3 border-t relative">
-        {/* Recording Controls - shown on top of input when recording */}
-        {!message && !isLoading && (
-          <div>
+      {!message && !isLoading && (
+        <div className="w-full flex flex-col items-center gap-5"> 
+          <div className="w-full">
             {showRecordingControls ? (
-              <div className="absolute bottom-full lg:bottom-40 xl:bottom-44 2xl:bottom-60 left-0 right-0 pt-4 rounded-t-lg">
-                <div className="max-w-4xl mx-auto">
+              <div className="p-4 rounded-t-lg">
+                <div className="max-w-4xl w-full mx-auto">
                   <div className="flex flex-col items-center">
-                    <div className="flex items-center space-x-3 mb-3">
+                    <div className="flex items-center space-x-3 mb-2">
                       <div className="relative">
                         {!isPaused && (
                           <div className="absolute inset-0 bg-red-100 rounded-full animate-ping opacity-75"></div>
@@ -552,10 +781,10 @@ const ArrestReport = () => {
                         {isPaused ? "Recording Paused" : "Recording"}
                       </span>
                     </div>
-                    <div className="text-2xl font-mono font-medium text-gray-800 mb-4 text-center">
+                    <div className="text-2xl font-mono font-medium text-gray-800 mb-2 text-center">
                       {formatTime(recordingTime)}
                     </div>
-                    <div className="flex justify-center space-x-4 mb-4">
+                    <div className="flex justify-center space-x-4 mb-2">
                       {isPaused ? (
                         <Button
                           onClick={resumeRecording}
@@ -577,7 +806,7 @@ const ArrestReport = () => {
                       )}
                       <Button
                         onClick={submitRecording}
-                        className="bg-blue-600 hover:bg-blue-700 mb-2"
+                        className="bg-blue-600 hover:bg-blue-700 "
                       >
                         Submit Recording
                       </Button>
@@ -587,13 +816,13 @@ const ArrestReport = () => {
               </div>
             ) : (
               <div className={cn(
-                "absolute",
-                "bottom-40", // Default position
-                "md:bottom-44", // Slightly higher on medium screens
-                "lg:bottom-48", // Higher on large screens
-                "xl:bottom-[13rem]", // Even higher on extra large screens
-                "2xl:bottom-60", // Highest on 2xl screens
-                "left-0 right-0 pt-4 rounded-t-lg"
+                // "absolute",
+                // "bottom-40", // Default position
+                // "md:bottom-44", // Slightly higher on medium screens
+                // "lg:bottom-48", // Higher on large screens
+                // "xl:bottom-[13rem]", // Even higher on extra large screens
+                // "2xl:bottom-60", // Highest on 2xl screens
+                "w-full pt-4 rounded-t-lg"
               )}>
                 <div className={cn(
                   "mx-auto",
@@ -620,9 +849,8 @@ const ArrestReport = () => {
               </div>
             )}
           </div>
-        )}
 
-        {!message && !isLoading && (
+      <div className="bg-white w-full px-4 py-3 border-t relative">
         <> 
         <Form {...form}>
           <form
@@ -638,7 +866,10 @@ const ArrestReport = () => {
                       ref={textareaRef}
                       className="w-full border-0 focus:ring-0 resize-y min-h-[80px] max-h-[200px] py-2 px-3 text-base transition-all duration-200 ease-in-out"
                       disabled={isLoading}
-                      placeholder="You can type here or use the mic to dictate"
+                      placeholder={selectedTemplate?.strictMode 
+                        ? "Provide detailed information including all required fields..." 
+                        : "You can type here or use the mic to dictate"
+                      }
                       value={prompt}
                       onChange={(e) => {
                         setPrompt(e.target.value);
@@ -670,13 +901,17 @@ const ArrestReport = () => {
             <p className="text-xs xl:text-base text-gray-500 text-center">
               {showRecordingControls 
                 ? "Speak clearly to record details about the arrest" 
-                : "Tip: Include location, time, suspect details, charges, and circumstances for best results"}
+                : selectedTemplate?.strictMode
+                ? "Ensure you include all required information for proper report generation"
+                : "Tip: Include location, time, suspect details, charges, and circumstances for best results"
+              }
             </p>
           </div>
         </div>
         </>
-        )}
       </div>
+      </div>
+      )}
     </div>
   );
 };

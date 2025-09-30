@@ -3,13 +3,16 @@ import { auth } from '@clerk/nextjs/server';
 
 const prisma = new PrismaClient();
 
-// Save a new template
+// Save a new template with strict validation fields
 export const saveUploadTemplate = async (
   userId: string,
   templateName: string,
   instructions: string,
   examples: string | undefined,
-  reportTypes: string[] // Change to array
+  reportTypes: string[],
+  requiredFields: string[],
+  fieldDefinitions: any,
+  strictMode: boolean = true
 ) => {
   if (!userId) {
     return;
@@ -21,6 +24,9 @@ export const saveUploadTemplate = async (
       templateName,
       instructions,
       reportTypes,
+      requiredFields,
+      fieldDefinitions,
+      strictMode,
       ...(examples ? { examples } : {}),
     },
   });
@@ -30,16 +36,22 @@ export const updateTemplate = async (
   id: string,
   templateName: string,
   instructions: string,
+  requiredFields: string[],
+  fieldDefinitions: any,
+  strictMode: boolean
 ) => {
   if (!id) {
     return;
   }
-  // Update the template with the new values
+  
   await prisma.uploadTemplates.update({
     where: { id: id },
     data: {
       templateName,
       instructions,
+      requiredFields,
+      fieldDefinitions,
+      strictMode,
     },
   });
 };
@@ -67,10 +79,26 @@ export const filterUploadTemplatesByReportType = async (reportType: string) => {
     where: { 
       userId: userId, 
       reportTypes: {
-        has: reportType // Check if array contains the type
+        has: reportType
       }
     },
   });
 
   return filteredTemplates;
+};
+
+// Get template by ID
+export const getTemplateById = async (id: string) => {
+  const { userId } = auth();
+  
+  if (!userId) return null;
+
+  const template = await prisma.uploadTemplates.findFirst({
+    where: { 
+      id: id,
+      userId: userId 
+    },
+  });
+
+  return template;
 };

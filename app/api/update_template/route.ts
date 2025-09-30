@@ -6,7 +6,7 @@ export async function PUT(request: Request) {
   const { userId } = auth();
   const body = await request.json();
 
-  const { id, templateName, instructions } = body;
+  const { id, templateName, instructions, requiredFields, fieldDefinitions, strictMode } = body;
 
   if (!id) {
     return NextResponse.json({ error: "Template ID not found" }, { status: 400 });
@@ -16,7 +16,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "User not found" }, { status: 400 });
   }
 
-  await updateTemplate(id, templateName, instructions);
+  await updateTemplate(id, templateName, instructions, requiredFields, fieldDefinitions, strictMode);
   console.log("Template updated");
 
   return NextResponse.json({ message: "Template updated" }, { status: 200 });

@@ -141,8 +141,8 @@ export default function DepartmentAdminPage() {
   // Show loading state only for initial load, not tab switches
   if (isLoading && !data) {
     return (
-      <div className="container min-h-screen bg-white h-full mx-auto p-6">
-        <div className="flex items-center justify-center h-64">
+      <div className="container min-h-screen bg-white w-full h-full mx-auto p-6">
+        <div className="flex items-center justify-center h-full">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
             <p>Loading department data...</p>
@@ -154,7 +154,7 @@ export default function DepartmentAdminPage() {
 
   if (error) {
     return (
-      <div className="container min-h-screen bg-white h-full mx-auto p-6">
+      <div className="container min-h-screen bg-white w-full h-full mx-auto p-6">
         <Card>
           <CardHeader>
             <CardTitle>Error Loading Data</CardTitle>
