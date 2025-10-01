@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { clerkClient } from '@clerk/nextjs/server';
 import prismadb from '@/lib/prismadb';
-
-interface ClerkOrganizationMembership {
-  organization: {
-    id: string;
-    name: string;
-    membersCount?: number;
-  };
-  role: string;
-}
+import { ensureOrganizationExists, createReviewQueueItemIfNeeded } from '@/lib/organization-utils';
 
 export async function POST(request: NextRequest) {
   console.log('=== Report Submission API Called ===');
@@ -23,7 +14,7 @@ export async function POST(request: NextRequest) {
       reportType = 'incident',
       title,
       clerkOrgId,
-      clerkUserId // Get user ID from request body
+      clerkUserId
     } = body;
 
     console.log('👤 User submitting report:', clerkUserId);
@@ -67,58 +58,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get or create organization in database
-    console.log('🔍 Looking for organization in database...');
-    let organization = await prismadb.organization.findUnique({
-      where: { clerkOrgId: targetOrgId }
-    });
+    // Use the shared utility to ensure organization exists
+    const organization = await ensureOrganizationExists(targetOrgId);
 
     if (!organization) {
-      console.log('🏢 Organization not found in DB, creating new one...');
-      try {
-        const clerkOrg = await clerkClient.organizations.getOrganization({ 
-          organizationId: targetOrgId 
-        });
-        
-        console.log('📋 Clerk organization data:', {
-          name: clerkOrg.name,
-          membersCount: clerkOrg.membersCount
-        });
-
-        organization = await prismadb.organization.create({
-          data: {
-            clerkOrgId: targetOrgId,
-            name: clerkOrg.name,
-            type: 'law_enforcement',
-            memberCount: clerkOrg.membersCount || 1
-          }
-        });
-
-        console.log('✅ Organization created successfully:', organization.id);
-        
-        // Sync members after creating organization
-        console.log('🔄 Syncing members for new organization...');
-        try {
-          const syncResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/department/sync-members`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orgId: targetOrgId })
-          });
-          console.log('✅ Members sync result:', await syncResponse.json());
-        } catch (syncError) {
-          console.error('❌ Error syncing members:', syncError);
-        }
-
-      } catch (error) {
-        console.error('❌ Error creating organization:', error);
-        return NextResponse.json(
-          { error: 'Failed to create organization' },
-          { status: 500 }
-        );
-      }
-    } else {
-      console.log('✅ Organization found:', organization.id);
+      console.log('❌ Failed to create/find organization');
+      return NextResponse.json(
+        { error: 'Failed to create organization' },
+        { status: 500 }
+      );
     }
+
+    console.log('✅ Organization ready:', organization.id);
 
     // Create the department report
     console.log('📝 Creating department report...');
@@ -144,36 +95,11 @@ export async function POST(request: NextRequest) {
       flagged: report.flagged
     });
 
-    // If low accuracy, create review queue item
+    // Create review queue item if needed using shared utility
     if (accuracyScore && accuracyScore < 80) {
       console.log('⚠️ Low accuracy report detected, creating review queue item...');
-      const dueDate = new Date();
-      dueDate.setHours(dueDate.getHours() + 48); // 48-hour SLA
-
-      const reviewItem = await prismadb.reviewQueueItem.create({
-        data: {
-          organizationId: organization.id,
-          reportId: report.id,
-          accuracyScore: accuracyScore,
-          status: 'pending',
-          priority: accuracyScore < 60 ? 'high' : accuracyScore < 70 ? 'normal' : 'low',
-          dueDate: dueDate
-        }
-      });
-
-      console.log('✅ Review queue item created:', reviewItem.id);
-
-      // Update organization low accuracy count
-      await prismadb.organization.update({
-        where: { id: organization.id },
-        data: {
-          lowAccuracyCount: {
-            increment: 1
-          }
-        }
-      });
-
-      console.log('📈 Updated organization low accuracy count');
+      await createReviewQueueItemIfNeeded(report, organization.id);
+      console.log('✅ Review queue item created');
     }
 
     // Update organization report count
@@ -209,18 +135,7 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Verifying data persistence...');
     
     const savedReport = await prismadb.departmentReport.findUnique({
-  where: { id: report.id }
-});
-
-// Get organization separately if needed
-const savedOrganization = await prismadb.organization.findUnique({
-  where: { id: organization.id }
-});
-
-    console.log('✅ Report verification:', {
-      found: !!savedReport,
-      organizationId: savedReport?.organizationId,
-      organizationName: savedOrganization?.name
+      where: { id: report.id }
     });
 
     const reviewItemsCount = await prismadb.reviewQueueItem.count({

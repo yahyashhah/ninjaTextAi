@@ -14,6 +14,7 @@ import { buildNIBRSXML } from "@/lib/nibrs/xml";
 import { NibrsMapper } from "@/lib/nibrs/mapper";
 import { NIBRSErrorBuilder } from "@/lib/nibrs/errorBuilder";
 import { StandardErrorResponse } from "@/lib/nibrs/errorResponse";
+import { createReviewQueueItemIfNeeded, getUserOrganizationWithFallback } from "@/lib/organization-utils";
 
 type ChatCompletionMessageParam = {
   role: "system" | "user" | "assistant";
@@ -322,27 +323,10 @@ export async function POST(req: Request) {
     const isPro = await checkSubscription();
     if (!freeTrail && !isPro) return new NextResponse("Free Trial has expired", { status: 403 });
 
-    // Get user's organization
-    const userOrganization = await getUserOrganization(userId);
-    let organization = null;
-    
-    if (userOrganization) {
-      organization = await prismadb.organization.upsert({
-        where: { clerkOrgId: userOrganization.id },
-        update: { name: userOrganization.name, updatedAt: new Date() },
-        create: {
-          clerkOrgId: userOrganization.id,
-          name: userOrganization.name,
-          description: `Police Department - ${userOrganization.name}`,
-          type: 'law_enforcement',
-          memberCount: 0,
-          reportCount: 0,
-          lowAccuracyCount: 0
-        }
-      });
-    }
+    // Get user's organization using shared utility
+    const organization = await getUserOrganizationWithFallback(userId);
 
-    // STEP 1: VALIDATE INPUT COMPLETENESS FOR NARRATIVE (if template has requirements)
+    // STEP 1: VALIDATE INPUT COMPLETENESS FOR NARRATIVE 
     if (selectedTemplate?.strictMode !== false && selectedTemplate?.requiredFields?.length > 0 && !correctedData) {
       console.log("=== VALIDATING NARRATIVE TEMPLATE REQUIREMENTS ===");
       const validationResult = await validateInputCompleteness(prompt, selectedTemplate);
@@ -389,7 +373,7 @@ export async function POST(req: Request) {
       narrativeContent = "Error generating narrative report. Please try again.";
     }
 
-    // Process NIBRS result - CRITICAL FIX: Handle NIBRS errors properly
+    // Process NIBRS result
     let nibrsData = null;
     let xmlData = null;
     let accuracyScore = null;
@@ -432,9 +416,9 @@ export async function POST(req: Request) {
         }
       });
 
-      // Save to DepartmentReport table
+      // Save to DepartmentReport table using shared organization
       if (organization) {
-        await prismadb.departmentReport.create({
+        const departmentReport = await prismadb.departmentReport.create({
           data: {
             organizationId: organization.id,
             clerkUserId: userId,
@@ -443,15 +427,24 @@ export async function POST(req: Request) {
             content: narrativeContent,
             nibrsData: JSON.stringify(nibrsData),
             accuracyScore: accuracyScore,
-            status: 'submitted',
+            status: accuracyScore && accuracyScore < 80 ? 'pending_review' : 'submitted',
             submittedAt: new Date(),
+            flagged: accuracyScore && accuracyScore < 80
           }
         });
+
+        // Create review queue item if needed using shared utility
+        if (accuracyScore && accuracyScore < 80) {
+          await createReviewQueueItemIfNeeded(departmentReport, organization.id);
+        }
 
         // Update organization report count
         await prismadb.organization.update({
           where: { id: organization.id },
-          data: { reportCount: { increment: 1 }, updatedAt: new Date() }
+          data: { 
+            reportCount: { increment: 1 },
+            updatedAt: new Date()
+          }
         });
       }
 

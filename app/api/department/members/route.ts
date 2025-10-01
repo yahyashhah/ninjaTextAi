@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { clerkClient } from '@clerk/nextjs/server';
 import prismadb from '@/lib/prismadb';
+import { ensureOrganizationExists } from '@/lib/organization-utils';
 
 interface UserWithMemberships {
   id: string;
@@ -46,10 +47,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get organization from database
-    const organization = await prismadb.organization.findFirst({
-      where: { clerkOrgId: orgId }
-    });
+    // Use the shared utility to ensure organization exists
+    const organization = await ensureOrganizationExists(orgId);
 
     if (!organization) {
       return NextResponse.json(
@@ -58,17 +57,65 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get members with user details
-    const members = await prismadb.organizationMember.findMany({
+    // Get all members first
+    const allMembers = await prismadb.organizationMember.findMany({
       where: { organizationId: organization.id },
       include: {
-        user: true
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            profileImageUrl: true,
+            clerkUserId: true
+          }
+        }
       }
     });
 
+    // Filter out members with null users and enrich with Clerk data
+    const enrichedMembers = await Promise.all(
+      allMembers.map(async (member) => {
+        try {
+          // If user exists in our database, use that data
+          if (member.user) {
+            return {
+              ...member,
+              user: member.user
+            };
+          }
+
+          // If user doesn't exist in our DB but exists in Clerk, fetch from Clerk
+          const clerkUser = await clerkClient.users.getUser(member.userId);
+          return {
+            ...member,
+            user: {
+              id: member.userId,
+              clerkUserId: member.userId,
+              firstName: clerkUser.firstName,
+              lastName: clerkUser.lastName,
+              email: clerkUser.emailAddresses[0]?.emailAddress,
+              profileImageUrl: clerkUser.imageUrl
+            }
+          };
+        } catch (error) {
+          console.error(`Error fetching user ${member.userId}:`, error);
+          // Return member without user data if Clerk fetch fails
+          return {
+            ...member,
+            user: null
+          };
+        }
+      })
+    );
+
+    // Filter out members where we couldn't get any user data
+    const validMembers = enrichedMembers.filter(member => member.user !== null);
+
     return NextResponse.json({
-      members: members,
-      totalCount: members.length
+      members: validMembers,
+      totalCount: validMembers.length
     });
   } catch (error) {
     console.error('Error fetching members:', error);
@@ -116,10 +163,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get organization from database
-    const organization = await prismadb.organization.findUnique({
-      where: { clerkOrgId: orgId }
-    });
+    // Use the shared utility to ensure organization exists
+    const organization = await ensureOrganizationExists(orgId);
 
     if (!organization) {
       return NextResponse.json(
@@ -146,6 +191,23 @@ export async function POST(request: NextRequest) {
       userId: clerkUser.id,
       role: role === 'admin' ? 'org:admin' : 'org:member'
     });
+
+    // Find or create user in database
+    let dbUser = await prismadb.user.findUnique({
+      where: { clerkUserId: clerkUser.id }
+    });
+
+    if (!dbUser) {
+      dbUser = await prismadb.user.create({
+        data: {
+          clerkUserId: clerkUser.id,
+          email: email,
+          firstName: clerkUser.firstName || '',
+          lastName: clerkUser.lastName || '',
+          profileImageUrl: clerkUser.imageUrl || '',
+        }
+      });
+    }
 
     // Add to database
     await prismadb.organizationMember.upsert({
@@ -226,7 +288,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Remove from database
-    const organization = await prismadb.organization.findUnique({
+    const organization = await prismadb.organization.findFirst({
       where: { clerkOrgId: orgId }
     });
 
