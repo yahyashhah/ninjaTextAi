@@ -18,10 +18,9 @@ import {
   Clock,
   Download,
   Upload,
-  Bell,
-  TrendingUp,
-  TrendingDown,
-  Target
+  Eye,
+  Search,
+  RefreshCw
 } from "lucide-react";
 import Link from "next/link";
 import { ReviewQueue } from "@/components/department-admin/review-queue";
@@ -29,10 +28,9 @@ import { DepartmentStats } from "@/components/department-admin/department-stats"
 import { OfficerActivity } from "@/components/department-admin/officer-activity";
 import { MonthlyReports } from "@/components/department-admin/monthly-reports";
 import { MemberManagement } from "@/components/department-admin/member-management";
-import { KpiDashboard } from "@/components/department-admin/kpi-dashboard";
 import { useRouter } from "next/navigation";
 import { AuthLogs } from "@/components/department-admin/auth-logs";
-// import { AuditLog } from "@/components/department-admin/audit-log";
+import { ReportViewModal } from "@/components/department-admin/report-view-modal";
 
 interface DepartmentData {
   stats: {
@@ -42,18 +40,59 @@ interface DepartmentData {
     reviewQueueCount: number;
     overdueItems: number;
     averageAccuracy: number;
-    slaLowAccuracy: number; // % of low-accuracy reports reviewed within 48h
-    secondReviewRate: number; // % of reports requiring second review
+    slaLowAccuracy: number;
+    secondReviewRate: number;
   };
   recentActivity: any[];
   reviewQueue: any[];
   kpis: {
-    officerActivityCoverage: number; // % of officer activity recorded
-    exportSuccessRate: number; // % of successful exports
-    userManagementSuccess: number; // % of successful user management actions
-    reviewSlaCompliance: number; // % of reviews within 48h
-    backlogAge: number; // oldest backlog item in hours
-    secondReviewRate: number; // % requiring second review
+    officerActivityCoverage: number;
+    exportSuccessRate: number;
+    userManagementSuccess: number;
+    reviewSlaCompliance: number;
+    backlogAge: number;
+    secondReviewRate: number;
+  };
+}
+
+interface Report {
+  id: string;
+  title: string;
+  reportType: string;
+  status: string;
+  submittedAt: string;
+  accuracyScore?: number;
+  content: string;
+  rawText?: string;
+  finalNarrative?: string;
+  nibrsData?: string;
+  flagged?: boolean;
+  flagReason?: string;
+  missingFields?: string[];
+  warnings?: string[];
+  user: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+  reviewQueueItems: any[];
+}
+
+interface ReportsResponse {
+  reports: Report[];
+  pagination: {
+    page: number;
+    limit: number;
+    totalCount: number;
+    totalPages: number;
+  };
+  filters: {
+    statusTypes: string[];
+    reportTypes: string[];
+  };
+  summary: {
+    totalReports: number;
+    needsReview: number;
   };
 }
 
@@ -66,8 +105,27 @@ export default function DepartmentAdminPage() {
   const [activeTab, setActiveTab] = useState("overview");
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  
+  // Reports tab state
+  const [reports, setReports] = useState<Report[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsPagination, setReportsPagination] = useState({
+    page: 1,
+    limit: 20,
+    totalCount: 0,
+    totalPages: 0
+  });
+  const [reportsFilters, setReportsFilters] = useState({
+    status: '',
+    type: '',
+    search: ''
+  });
 
-  // Memoize the fetch function to prevent unnecessary re-renders
+  // Modal state
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Fetch department data
   const fetchDepartmentData = useCallback(async () => {
     if (!organization?.id) return;
     
@@ -77,14 +135,7 @@ export default function DepartmentAdminPage() {
       const response = await fetch(`/api/department/admin?orgId=${organization.id}`);
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API Error Details:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText
-        });
-        
-        throw new Error(`Failed to fetch data: ${response.status} - ${errorText}`);
+        throw new Error(`Failed to fetch data: ${response.status}`);
       }
       
       const result = await response.json();
@@ -98,45 +149,88 @@ export default function DepartmentAdminPage() {
     }
   }, [organization?.id]);
 
+  // Fetch reports data
+  const fetchReports = useCallback(async (page = 1, filters = reportsFilters) => {
+    if (!organization?.id) return;
+    
+    try {
+      setReportsLoading(true);
+      const params = new URLSearchParams({
+        orgId: organization.id,
+        page: page.toString(),
+        limit: '20',
+        ...(filters.status && { status: filters.status }),
+        ...(filters.type && { type: filters.type })
+      });
+
+      const response = await fetch(`/api/department/reports?${params}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch reports');
+      }
+      
+      const result: ReportsResponse = await response.json();
+      setReports(result.reports);
+      setReportsPagination(result.pagination);
+    } catch (error) {
+      console.error("Error fetching reports:", error);
+    } finally {
+      setReportsLoading(false);
+    }
+  }, [organization?.id, reportsFilters]);
+
   useEffect(() => {
     if (organization) {
       fetchDepartmentData();
-      
-      // const interval = setInterval(fetchDepartmentData, 5 * 60 * 1000);
-      // return () => clearInterval(interval);
     }
   }, [organization, fetchDepartmentData]);
 
-  const sendNotificationTest = async (type: 'email' | 'slack') => {
-    try {
-      const response = await fetch('/api/department/admin/notifications/test', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          orgId: organization?.id,
-          type
-        })
-      });
-      
-      if (response.ok) {
-        alert(`${type === 'email' ? 'Email' : 'Slack'} test notification sent successfully`);
-      } else {
-        alert('Failed to send test notification');
-      }
-    } catch (error) {
-      console.error('Error sending test notification:', error);
-      alert('Failed to send test notification');
+  // Fetch reports when reports tab is active
+  useEffect(() => {
+    if (activeTab === "all-reports" && organization?.id) {
+      fetchReports();
     }
-  };
+  }, [activeTab, organization?.id, fetchReports]);
 
   const handleRoleSwitch = () => {
-    // Store the current URL to return after role selection
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
     const returnUrl = encodeURIComponent(currentPath);
     router.push(`/role-selector?change=true&return=${returnUrl}`);
   };
+
+  const handleReportFilterChange = (key: string, value: string) => {
+    const newFilters = { ...reportsFilters, [key]: value };
+    setReportsFilters(newFilters);
+    fetchReports(1, newFilters);
+  };
+
+  const handleViewReport = (report: Report) => {
+    setSelectedReport(report);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedReport(null);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    fetchReports(newPage);
+  };
+
+  // Filter reports based on search
+  const filteredReports = reports.filter(report => {
+    if (!reportsFilters.search) return true;
+    
+    const searchTerm = reportsFilters.search.toLowerCase();
+    return (
+      report.title.toLowerCase().includes(searchTerm) ||
+      report.content.toLowerCase().includes(searchTerm) ||
+      report.user.firstName.toLowerCase().includes(searchTerm) ||
+      report.user.lastName.toLowerCase().includes(searchTerm) ||
+      report.reportType.toLowerCase().includes(searchTerm)
+    );
+  });
 
   // Show loading state only for initial load, not tab switches
   if (isLoading && !data) {
@@ -215,7 +309,6 @@ export default function DepartmentAdminPage() {
             </Badge>
           )}
           
-          {/* Add the Role Switcher Button here */}
           <Button 
             variant="outline" 
             onClick={handleRoleSwitch}
@@ -231,7 +324,8 @@ export default function DepartmentAdminPage() {
             onClick={fetchDepartmentData}
             disabled={isLoading}
           >
-            {isLoading ? "Refreshing..." : "Refresh Data"}
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            {isLoading ? "Refreshing..." : "Refresh"}
           </Button>
         </div>
       </div>
@@ -242,13 +336,12 @@ export default function DepartmentAdminPage() {
           <TabsTrigger value="review">Review Queue ({data?.stats?.reviewQueueCount || 0})</TabsTrigger>
           <TabsTrigger value="members">Members ({data?.stats?.totalMembers || 0})</TabsTrigger>
           <TabsTrigger value="reports">Monthly Reports</TabsTrigger>
+          <TabsTrigger value="all-reports">All Reports ({reportsPagination.totalCount || 0})</TabsTrigger>
           <TabsTrigger value="activity">Officer Activity</TabsTrigger>
           <TabsTrigger value="auth-logs">Authentication Logs</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
         
         <TabsContent value="overview" className="space-y-6">
-          {/* Pass loading prop only if the component supports it */}
           <DepartmentStats stats={data?.stats} loading={isLoading} />
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -298,56 +391,54 @@ export default function DepartmentAdminPage() {
             </Card>
             
             <Card>
-  <CardHeader>
-    <CardTitle>Quick Actions</CardTitle>
-    <CardDescription>
-      Common administrative tasks
-    </CardDescription>
-  </CardHeader>
-  <CardContent className="space-y-3">
-    <Button 
-      className="w-full justify-start" 
-      onClick={() => setActiveTab("members")}
-    >
-      <Plus className="h-4 w-4 mr-2" />
-      Invite New Member
-    </Button>
-    <Button 
-      variant="outline" 
-      className="w-full justify-start"
-      onClick={() => setActiveTab("reports")}
-    >
-      <Download className="h-4 w-4 mr-2" />
-      Export Reports
-    </Button>
-    <Button 
-      variant="outline" 
-      className="w-full justify-start"
-      onClick={() => setActiveTab("members")}
-    >
-      <Upload className="h-4 w-4 mr-2" />
-      Bulk Import Members
-    </Button>
-    <Button 
-      variant="outline" 
-      className="w-full justify-start"
-      onClick={() => {
-        setActiveTab("reports");
-      }}
-    >
-      <BarChart3 className="h-4 w-4 mr-2" />
-      Generate Monthly Report
-    </Button>
-    <Button 
-      variant="outline" 
-      className="w-full justify-start"
-      onClick={() => setActiveTab("review")}
-    >
-      <AlertTriangle className="h-4 w-4 mr-2" />
-      Review Queue ({data?.stats?.reviewQueueCount || 0})
-    </Button>
-  </CardContent>
-</Card>
+              <CardHeader>
+                <CardTitle>Quick Actions</CardTitle>
+                <CardDescription>
+                  Common administrative tasks
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button 
+                  className="w-full justify-start" 
+                  onClick={() => setActiveTab("members")}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Invite New Member
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => setActiveTab("reports")}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export Reports
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => setActiveTab("members")}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Bulk Import Members
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => setActiveTab("reports")}
+                >
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  Generate Monthly Report
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => setActiveTab("review")}
+                >
+                  <AlertTriangle className="h-4 w-4 mr-2" />
+                  Review Queue ({data?.stats?.reviewQueueCount || 0})
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
         
@@ -369,6 +460,156 @@ export default function DepartmentAdminPage() {
           <MonthlyReports organizationId={organization.id} />
         </TabsContent>
         
+        <TabsContent value="all-reports">
+          <Card>
+            <CardHeader>
+              <CardTitle>All Department Reports</CardTitle>
+              <CardDescription>
+                View and manage all reports submitted by department members
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* Filters */}
+              <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <input
+                      placeholder="Search reports..."
+                      className="pl-8 w-full p-2 border rounded"
+                      value={reportsFilters.search}
+                      onChange={(e) => handleReportFilterChange('search', e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    className="p-2 border rounded"
+                    value={reportsFilters.status}
+                    onChange={(e) => handleReportFilterChange('status', e.target.value)}
+                  >
+                    <option value="">All Status</option>
+                    <option value="submitted">Submitted</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="pending_review">Pending Review</option>
+                  </select>
+                  <select
+                    className="p-2 border rounded"
+                    value={reportsFilters.type}
+                    onChange={(e) => handleReportFilterChange('type', e.target.value)}
+                  >
+                    <option value="">All Types</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="annual">Annual</option>
+                    <option value="incident">Incident</option>
+                    <option value="nibrs">NIBRS</option>
+                    <option value="dual_report">Dual Report</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Reports Table */}
+              {reportsLoading ? (
+                <div className="space-y-4">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="flex items-center justify-between p-4 border rounded animate-pulse">
+                      <div className="space-y-2 flex-1">
+                        <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+                        <div className="h-3 bg-gray-100 rounded w-1/3"></div>
+                      </div>
+                      <div className="h-6 bg-gray-200 rounded w-16"></div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredReports.length > 0 ? (
+                <div className="space-y-4">
+                  {filteredReports.map((report) => (
+                    <div key={report.id} className="flex items-center justify-between p-4 border rounded hover:bg-gray-50 transition-colors">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold">{report.title}</h3>
+                          <Badge variant="outline">{report.reportType}</Badge>
+                          <Badge 
+                            variant={
+                              report.status === 'approved' ? 'default' :
+                              report.status === 'rejected' ? 'destructive' :
+                              report.status === 'pending_review' ? 'secondary' : 'outline'
+                            }
+                          >
+                            {report.status}
+                          </Badge>
+                          {report.accuracyScore && (
+                            <Badge variant={report.accuracyScore < 85 ? 'destructive' : 'default'}>
+                              {report.accuracyScore}%
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Submitted by {report.user?.firstName || 'Unknown'} {report.user?.lastName || 'User'} • 
+                          {new Date(report.submittedAt).toLocaleDateString()}
+                        </p>
+                        {report.reviewQueueItems.length > 0 && (
+                          <p className="text-xs text-orange-600 mt-1">
+                            {report.reviewQueueItems.length} pending review(s)
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          onClick={() => handleViewReport(report)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Pagination */}
+                  {reportsPagination.totalPages > 1 && (
+                    <div className="flex justify-between items-center mt-6">
+                      <p className="text-sm text-muted-foreground">
+                        Showing page {reportsPagination.page} of {reportsPagination.totalPages}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={reportsPagination.page <= 1}
+                          onClick={() => handlePageChange(reportsPagination.page - 1)}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={reportsPagination.page >= reportsPagination.totalPages}
+                          onClick={() => handlePageChange(reportsPagination.page + 1)}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="font-semibold text-lg mb-2">No Reports Found</h3>
+                  <p className="text-muted-foreground mb-4">
+                    {reportsFilters.status || reportsFilters.type || reportsFilters.search 
+                      ? "Try adjusting your filters to see more results." 
+                      : "No reports have been submitted yet."}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
         <TabsContent value="activity">
           <OfficerActivity organizationId={organization.id} />
         </TabsContent>
@@ -376,181 +617,14 @@ export default function DepartmentAdminPage() {
         <TabsContent value="auth-logs">
           <AuthLogs organizationId={organization.id} />
         </TabsContent>
-        
-        <TabsContent value="settings">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Notification Settings</CardTitle>
-                <CardDescription>
-                  Configure alerts and notifications
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <h3 className="font-medium">Email Notifications</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label htmlFor="email-new-items" className="text-sm">
-                        New review queue items
-                      </label>
-                      <input 
-                        id="email-new-items" 
-                        type="checkbox" 
-                        defaultChecked 
-                        className="h-4 w-4 rounded"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <label htmlFor="email-reminders" className="text-sm">
-                        24-hour reminder notifications
-                      </label>
-                      <input 
-                        id="email-reminders" 
-                        type="checkbox" 
-                        defaultChecked 
-                        className="h-4 w-4 rounded"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <label htmlFor="email-overdue" className="text-sm">
-                        Overdue item alerts
-                      </label>
-                      <input 
-                        id="email-overdue" 
-                        type="checkbox" 
-                        defaultChecked 
-                        className="h-4 w-4 rounded"
-                      />
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <h3 className="font-medium">Slack Notifications</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label htmlFor="slack-new-items" className="text-sm">
-                        New review queue items
-                      </label>
-                      <input 
-                        id="slack-new-items" 
-                        type="checkbox" 
-                        className="h-4 w-4 rounded"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <label htmlFor="slack-critical" className="text-sm">
-                        Critical priority items only
-                      </label>
-                      <input 
-                        id="slack-critical" 
-                        type="checkbox" 
-                        className="h-4 w-4 rounded"
-                      />
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex gap-2">
-                  <Button onClick={() => sendNotificationTest('email')}>
-                    Test Email
-                  </Button>
-                  <Button variant="outline" onClick={() => sendNotificationTest('slack')}>
-                    Test Slack
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader>
-                <CardTitle>Review Settings</CardTitle>
-                <CardDescription>
-                  Configure review workflow and thresholds
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <h3 className="font-medium">Accuracy Thresholds</h3>
-                  <div className="space-y-2">
-                    <div className="flex flex-col space-y-1">
-                      <label htmlFor="accuracy-threshold" className="text-sm">
-                        Low accuracy threshold (currently: 80%)
-                      </label>
-                      <input 
-                        id="accuracy-threshold" 
-                        type="range" 
-                        min="50" 
-                        max="95" 
-                        defaultValue="80" 
-                        className="w-full"
-                      />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>50%</span>
-                        <span>80%</span>
-                        <span>95%</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <h3 className="font-medium">SLA Settings</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label htmlFor="sla-hours" className="text-sm">
-                        Review SLA hours (default: 48)
-                      </label>
-                      <input 
-                        id="sla-hours" 
-                        type="number" 
-                        min="24" 
-                        max="72" 
-                        defaultValue="48" 
-                        className="w-20 p-2 border rounded"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <label htmlFor="auto-assign" className="text-sm">
-                        Auto-assign review items
-                      </label>
-                      <input 
-                        id="auto-assign" 
-                        type="checkbox" 
-                        className="h-4 w-4 rounded"
-                      />
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <h3 className="font-medium">Audit Settings</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label htmlFor="audit-retention" className="text-sm">
-                        Audit log retention (days)
-                      </label>
-                      <select 
-                        id="audit-retention" 
-                        className="w-20 p-2 border rounded"
-                        defaultValue="365"
-                      >
-                        <option value="30">30</option>
-                        <option value="90">90</option>
-                        <option value="180">180</option>
-                        <option value="365">365</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                
-                <Button>Save Settings</Button>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
       </Tabs>
+
+      {/* Report View Modal */}
+      <ReportViewModal
+        report={selectedReport}
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+      />
     </div>
   );
 }

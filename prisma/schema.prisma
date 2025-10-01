@@ -80,7 +80,7 @@ model OrganizationMember {
   organization       Organization @relation(fields: [organizationId], references: [id])
   subscription       OrganizationSubscription? @relation(fields: [organizationId], references: [clerkOrgId]) // New relation
 
-  user               User         @relation(fields: [userId], references: [clerkUserId])
+  user               User?    @relation(fields: [userId], references: [clerkUserId])
 
   @@unique([organizationId, userId])
 }
@@ -245,7 +245,7 @@ model DepartmentReport {
   organizationId   String
   organization     Organization @relation(fields: [organizationId], references: [id])
   clerkUserId      String
-  user             User     @relation(fields: [clerkUserId], references: [clerkUserId])
+  user             User?     @relation(fields: [clerkUserId], references: [clerkUserId])
   reportType       String
   title            String
   content          String

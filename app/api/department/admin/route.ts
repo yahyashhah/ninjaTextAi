@@ -2,6 +2,7 @@ import { clerkClient } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import prismadb from '@/lib/prismadb';
+import { ensureOrganizationExists } from '@/lib/organization-utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -59,68 +60,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden - Not organization admin' }, { status: 403 });
     }
 
-    // Get organization data - search by clerkOrgId using findFirst
-    let organization = await prismadb.organization.findFirst({
-      where: {
-        clerkOrgId: orgId
-      }
-    });
-
-    // If organization not found, create it
-    if (!organization) {
-      try {
-        const clerkOrg = await clerkClient.organizations.getOrganization({
-          organizationId: orgId
-        });
-
-        console.log('📋 Clerk organization data:', {
-          name: clerkOrg.name,
-          membersCount: clerkOrg.membersCount
-        });
-
-        // Create organization in database
-        organization = await prismadb.organization.create({
-          data: {
-            clerkOrgId: orgId,
-            name: clerkOrg.name,
-            type: 'law_enforcement',
-            memberCount: clerkOrg.membersCount || 0
-          }
-        });
-
-        // Sync members after creating organization
-        await syncOrganizationMembers(orgId, organization.id);
-
-      } catch (error: any) {
-        console.error('❌ Error creating organization:', error);
-        
-        // If it's a unique constraint error, try to find the organization again
-        if (error.code === 'P2002') {
-          console.log('🔄 Unique constraint error, trying to find organization again...');
-          organization = await prismadb.organization.findFirst({
-            where: { clerkOrgId: orgId }
-          });
-          
-          if (!organization) {
-            console.log('❌ Organization still not found after P2002 error');
-            return NextResponse.json(
-              { error: 'Organization not found' },
-              { status: 404 }
-            );
-          }
-          
-          console.log('✅ Organization found after retry:', organization.id);
-        } else {
-          console.log('❌ Organization creation failed with unknown error');
-          return NextResponse.json(
-            { error: 'Organization not found and could not be created' },
-            { status: 404 }
-          );
-        }
-      }
-    }
-
-    // Check if organization is still null after all operations
+    // Use the shared utility to ensure organization exists
+    const organization = await ensureOrganizationExists(orgId);
+    
     if (!organization) {
       console.log('❌ Organization is still null after all operations');
       return NextResponse.json(
@@ -157,28 +99,18 @@ export async function GET(request: NextRequest) {
           in: ['pending', 'in_review']
         }
       },
+      include: {
+        report: {
+          include: {
+            user: true
+          }
+        }
+      },
       orderBy: {
         dueDate: 'asc'
       },
       take: 50
     });
-
-    // Get user details for review items
-    const reviewQueueWithUsers = await Promise.all(
-      reviewQueue.map(async (item) => {
-        const report = await prismadb.departmentReport.findUnique({
-          where: { id: item.reportId },
-          include: {
-            user: true
-          }
-        });
-        
-        return {
-          ...item,
-          report: report
-        };
-      })
-    );
 
     // Get recent activity
     console.log('📋 Fetching recent activity...');
@@ -196,6 +128,7 @@ export async function GET(request: NextRequest) {
     const overdueItems = reviewQueue.filter(item => 
       item.dueDate && new Date(item.dueDate) < new Date() && item.status !== 'resolved'
     ).length;
+
     // Calculate average accuracy from reports
     const accuracyData = await prismadb.departmentReport.aggregate({
       where: {
@@ -232,7 +165,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       stats,
-      reviewQueue: reviewQueueWithUsers,
+      reviewQueue: reviewQueue,
       recentActivity,
       kpis
     });

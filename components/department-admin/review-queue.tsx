@@ -1,4 +1,3 @@
-// components/department-admin/review-queue.tsx
 "use client";
 
 import { useState } from "react";
@@ -13,9 +12,8 @@ import {
   Send, 
   FileText,
   User,
-  MapPin,
-  Calendar,
-  Shield
+  Shield,
+  RefreshCw
 } from "lucide-react";
 
 interface ReviewQueueProps {
@@ -24,14 +22,17 @@ interface ReviewQueueProps {
   loading?: boolean;
 }
 
+// Use the same threshold as backend (85)
+const REVIEW_THRESHOLD = 85;
+
 export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [isReviewing, setIsReviewing] = useState(false);
   const [activeView, setActiveView] = useState<'queue' | 'details'>('queue');
+  const [reviewNotes, setReviewNotes] = useState("");
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case "critical": return "destructive";
       case "high": return "destructive";
       case "normal": return "outline";
       case "low": return "secondary";
@@ -52,7 +53,7 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
     try {
       return JSON.parse(nibrsData);
     } catch {
-      return {};
+      return null;
     }
   };
 
@@ -61,62 +62,87 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
     setSelectedItem(item);
     setActiveView('details');
     
-    // Mark as in review
     try {
-      await fetch(`/api/department/review-queue/${item.id}`, {
+      const response = await fetch(`/api/department/review-queue`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          status: "in_review",
+          itemId: item.id,
+          action: 'assign'
         }),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to update review status');
+      }
+      
       onRefresh();
     } catch (error) {
       console.error("Error updating review status:", error);
+      alert('Failed to start review. Please try again.');
     }
     setIsReviewing(false);
   };
 
-  const handleResolve = async (action: string, notes?: string) => {
+  const handleResolve = async (action: string) => {
     if (!selectedItem) return;
     
+    setIsReviewing(true);
     try {
-      await fetch(`/api/department/review-queue/${selectedItem.id}`, {
+      const response = await fetch(`/api/department/review-queue`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          itemId: selectedItem.id,
           action,
-          notes,
-          resolvedAt: new Date().toISOString(),
+          notes: reviewNotes
         }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to resolve review');
+      }
       
       setSelectedItem(null);
       setActiveView('queue');
+      setReviewNotes("");
       onRefresh();
+      alert(`Review item ${action}d successfully!`);
     } catch (error) {
       console.error("Error resolving review item:", error);
+      alert(error instanceof Error ? error.message : 'Failed to resolve review');
+    } finally {
+      setIsReviewing(false);
     }
   };
 
   const renderNibrsDetails = (nibrsData: any) => {
-    if (!nibrsData) return null;
+    if (!nibrsData) {
+      return (
+        <div className="text-center py-4 text-muted-foreground">
+          No NIBRS data available for this report
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-4">
-        {/* Administrative Details */}
+        {/* Basic Report Info */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <h4 className="font-medium text-sm text-muted-foreground">Incident Number</h4>
-            <p>{nibrsData.administrative?.incidentNumber || 'N/A'}</p>
+            <h4 className="font-medium text-sm text-muted-foreground">Report Type</h4>
+            <p>{selectedItem?.report?.reportType || 'N/A'}</p>
           </div>
           <div>
-            <h4 className="font-medium text-sm text-muted-foreground">Date & Time</h4>
-            <p>{nibrsData.administrative?.incidentDate} {nibrsData.administrative?.incidentTime}</p>
+            <h4 className="font-medium text-sm text-muted-foreground">Accuracy Score</h4>
+            <p className={selectedItem?.accuracyScore < REVIEW_THRESHOLD ? "text-red-500 font-bold" : ""}>
+              {Math.round(selectedItem?.accuracyScore || 0)}%
+            </p>
           </div>
         </div>
 
@@ -129,14 +155,16 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
                 <div key={index} className="p-2 border rounded">
                   <div className="flex justify-between items-start">
                     <div>
-                      <p className="font-medium">{offense.description} ({offense.code})</p>
+                      <p className="font-medium">{offense.description}</p>
                       <p className="text-sm text-muted-foreground">
                         {offense.attemptedCompleted === 'A' ? 'Attempted' : 'Completed'}
                       </p>
                     </div>
-                    <Badge variant="outline">
-                      Confidence: {offense.mappingConfidence ? Math.round(offense.mappingConfidence * 100) : 'N/A'}%
-                    </Badge>
+                    {offense.mappingConfidence && (
+                      <Badge variant="outline">
+                        Confidence: {Math.round(offense.mappingConfidence * 100)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
               ))}
@@ -155,25 +183,11 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
                     <User className="h-4 w-4 text-muted-foreground" />
                     <div>
                       <p className="font-medium">Type: {victim.type}</p>
-                      {victim.injury && <p className="text-sm">Injury: {victim.injury}</p>}
+                      {victim.injury && victim.injury !== 'N' && (
+                        <p className="text-sm">Injury: {victim.injury}</p>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Properties */}
-        {nibrsData.properties && nibrsData.properties.length > 0 && (
-          <div>
-            <h4 className="font-medium text-sm text-muted-foreground mb-2">Properties</h4>
-            <div className="space-y-2">
-              {nibrsData.properties.map((property: any, index: number) => (
-                <div key={index} className="p-2 border rounded">
-                  <p className="font-medium">{property.description}</p>
-                  {property.value && <p className="text-sm">Value: ${property.value}</p>}
-                  {property.seized && <Badge variant="outline" className="mt-1">Seized</Badge>}
                 </div>
               ))}
             </div>
@@ -188,7 +202,11 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
     
     return (
       <div className="space-y-6">
-        <Button variant="outline" onClick={() => setActiveView('queue')}>
+        <Button variant="outline" onClick={() => {
+          setActiveView('queue');
+          setSelectedItem(null);
+          setReviewNotes("");
+        }}>
           ← Back to Queue
         </Button>
 
@@ -196,8 +214,11 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
           <CardHeader>
             <CardTitle>Review Report</CardTitle>
             <CardDescription>
-              Accuracy Score: {Math.round(selectedItem.accuracyScore)}% • 
-              Submitted: {new Date(selectedItem.report?.createdAt).toLocaleDateString()}
+              Officer: {selectedItem.report?.user?.firstName} {selectedItem.report?.user?.lastName} • 
+              Submitted: {new Date(selectedItem.report?.submittedAt).toLocaleDateString()} • 
+              Accuracy: <span className={selectedItem.accuracyScore < REVIEW_THRESHOLD ? "text-red-500 font-bold" : ""}>
+                {Math.round(selectedItem.accuracyScore)}%
+              </span>
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -211,8 +232,8 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
               {/* Narrative */}
               <div>
                 <h3 className="font-medium mb-4">Officer Narrative</h3>
-                <div className="p-4 border rounded bg-muted/50">
-                  <p className="whitespace-pre-wrap">{selectedItem.report?.content}</p>
+                <div className="p-4 border rounded bg-muted/50 max-h-96 overflow-y-auto">
+                  <p className="whitespace-pre-wrap text-sm">{selectedItem.report?.content}</p>
                 </div>
               </div>
             </div>
@@ -220,52 +241,68 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
             {/* Review Actions */}
             <div className="mt-6 pt-6 border-t">
               <h3 className="font-medium mb-4">Review Actions</h3>
+              
+              {/* Review Notes */}
+              <div className="mb-4">
+                <h4 className="font-medium mb-2">Review Notes</h4>
+                <textarea 
+                  className="w-full p-3 border rounded"
+                  rows={3}
+                  placeholder="Add detailed notes about this review..."
+                  value={reviewNotes}
+                  onChange={(e) => setReviewNotes(e.target.value)}
+                />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Button 
                   onClick={() => handleResolve('approve')}
                   className="bg-green-600 hover:bg-green-700"
+                  disabled={isReviewing}
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
-                  Approve Report
+                  {isReviewing ? "Processing..." : "Approve Report"}
                 </Button>
                 
                 <Button 
                   variant="outline"
                   onClick={() => handleResolve('edit')}
+                  disabled={isReviewing}
                 >
                   <Edit className="h-4 w-4 mr-2" />
-                  Edit & Approve
+                  {isReviewing ? "Processing..." : "Edit & Approve"}
                 </Button>
                 
                 <Button 
                   variant="outline" 
                   onClick={() => handleResolve('return')}
+                  disabled={isReviewing}
                 >
                   <Send className="h-4 w-4 mr-2" />
-                  Return to Officer
+                  {isReviewing ? "Processing..." : "Return to Officer"}
                 </Button>
 
                 <Button 
                   variant="outline" 
                   onClick={() => handleResolve('escalate')}
+                  disabled={isReviewing}
                 >
                   <Shield className="h-4 w-4 mr-2" />
-                  Escalate to Supervisor
+                  {isReviewing ? "Processing..." : "Escalate"}
                 </Button>
-              </div>
-
-              {/* Notes */}
-              <div className="mt-4">
-                <h4 className="font-medium mb-2">Review Notes</h4>
-                <textarea 
-                  className="w-full p-3 border rounded"
-                  rows={4}
-                  placeholder="Add detailed notes about this review..."
-                />
               </div>
             </div>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="h-8 w-8 animate-spin mr-2" />
+        Loading review queue...
       </div>
     );
   }
@@ -277,7 +314,7 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
           <CardHeader>
             <CardTitle>Review Queue</CardTitle>
             <CardDescription>
-              Reports flagged for low accuracy that need review (Accuracy &lt; 80%)
+              Reports flagged for low accuracy that need review (Accuracy &lt; {REVIEW_THRESHOLD}%)
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -291,15 +328,15 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
               <div className="space-y-4">
                 {items.map((item) => {
                   const nibrsData = parseNibrsData(item.report?.nibrsData);
-                  const primaryOffense = nibrsData.offenses?.[0];
+                  const primaryOffense = nibrsData?.offenses?.[0];
+                  const isOverdue = item.dueDate && new Date(item.dueDate) < new Date() && item.status !== "resolved";
                   
                   return (
                     <div 
                       key={item.id} 
-                      className={`p-4 border rounded-lg cursor-pointer hover:bg-muted/50 ${
+                      className={`p-4 border rounded-lg ${
                         selectedItem?.id === item.id ? "bg-muted border-primary" : ""
-                      }`}
-                      onClick={() => setSelectedItem(item)}
+                      } ${isOverdue ? "border-red-200 bg-red-50" : ""}`}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -315,38 +352,35 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
                               <AlertTriangle className="h-3 w-3" />
                               {Math.round(item.accuracyScore)}% accuracy
                             </Badge>
+                            {isOverdue && (
+                              <Badge variant="destructive">Overdue</Badge>
+                            )}
                           </div>
                           
                           <h4 className="font-medium">{item.report?.title || "Untitled Report"}</h4>
                           
                           {primaryOffense && (
                             <p className="text-sm text-muted-foreground">
-                              Offense: {primaryOffense.description} ({primaryOffense.code})
+                              Offense: {primaryOffense.description}
                             </p>
                           )}
                           
                           <p className="text-sm text-muted-foreground">
                             Officer: {item.report?.user?.firstName} {item.report?.user?.lastName} • 
-                            Submitted: {new Date(item.report?.createdAt).toLocaleDateString()}
+                            Submitted: {new Date(item.report?.submittedAt).toLocaleDateString()}
                           </p>
                           
                           {item.dueDate && (
                             <div className="flex items-center gap-1 mt-2 text-sm">
                               <Clock className="h-3 w-3" />
                               Due: {new Date(item.dueDate).toLocaleDateString()}
-                              {new Date(item.dueDate) < new Date() && (
-                                <Badge variant="destructive" className="ml-2">Overdue</Badge>
-                              )}
                             </div>
                           )}
                         </div>
                         
                         <Button 
                           size="sm" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleStartReview(item);
-                          }}
+                          onClick={() => handleStartReview(item)}
                           disabled={item.status === "in_review" && selectedItem?.id !== item.id}
                         >
                           {item.status === "pending" ? "Start Review" : "Continue Review"}
@@ -361,7 +395,7 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
         </Card>
       </div>
       
-      <div>
+      <div className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle>Queue Statistics</CardTitle>
@@ -393,46 +427,51 @@ export function ReviewQueue({ items, onRefresh, loading }: ReviewQueueProps) {
               <div className="flex justify-between items-center">
                 <span className="text-sm">Overdue Items</span>
                 <span className="font-medium text-destructive">
-                  {items.filter(i => new Date(i.dueDate) < new Date() && i.status !== "resolved").length}
+                  {items.filter(i => i.dueDate && new Date(i.dueDate) < new Date() && i.status !== "resolved").length}
                 </span>
               </div>
               
               <div className="flex justify-between items-center">
-                <span className="text-sm">Avg. Resolution Time</span>
+                <span className="text-sm">Avg. Accuracy</span>
                 <span className="font-medium">
-                  {Math.round(items.reduce((acc, item) => acc + (item.processingTime || 0), 0) / 
-                   Math.max(1, items.filter(i => i.processingTime).length) / 3600000)}h
+                  {items.length > 0 
+                    ? Math.round(items.reduce((acc, item) => acc + item.accuracyScore, 0) / items.length)
+                    : 0
+                  }%
                 </span>
               </div>
             </div>
           </CardContent>
         </Card>
         
-        {selectedItem && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>
-                Actions for the selected report
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button 
-                className="w-full mb-2" 
-                onClick={() => handleStartReview(selectedItem)}
-              >
-                Start Detailed Review
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full"
-                onClick={() => handleResolve("approve", "Quick approval")}
-              >
-                Quick Approve
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+            <CardDescription>
+              Manage the review queue
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Button 
+              variant="outline" 
+              className="w-full"
+              onClick={onRefresh}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh Queue
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full"
+              onClick={() => {
+                // Implement bulk actions if needed
+                alert("Bulk actions feature coming soon");
+              }}
+            >
+              Bulk Actions
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

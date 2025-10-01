@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { clerkClient } from '@clerk/nextjs/server';
 import prismadb from '@/lib/prismadb';
+import { ensureOrganizationExists } from '@/lib/organization-utils';
 
 interface UserWithMemberships {
   id: string;
@@ -9,6 +10,9 @@ interface UserWithMemberships {
   lastName?: string;
   emailAddresses: { emailAddress: string }[];
 }
+
+// Configurable threshold - change this to 85 as requested
+const REVIEW_THRESHOLD = 85;
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,7 +32,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if user is admin of this organization using proper Clerk API
+    // Check if user is admin of this organization
     let isOrgAdmin = false;
     try {
       const memberships = await clerkClient.users.getOrganizationMembershipList({
@@ -49,10 +53,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get organization by clerkOrgId
-    const organization = await prismadb.organization.findFirst({
-      where: { clerkOrgId: orgId }
-    });
+    // Use shared utility to ensure organization exists
+    const organization = await ensureOrganizationExists(orgId);
 
     if (!organization) {
       return NextResponse.json(
@@ -61,11 +63,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get review queue items with filtering - use organization.id (internal ID)
+    // Get review queue items with filtering - using the new 85 threshold
     const whereClause: any = {
       organizationId: organization.id,
       accuracyScore: {
-        lt: 80 // Low accuracy threshold
+        lt: REVIEW_THRESHOLD // Now using 85 instead of 80
       }
     };
 
@@ -94,12 +96,15 @@ export async function GET(request: NextRequest) {
       ]
     });
 
-    // Calculate queue statistics
+    // Filter out items with null users for safety
+    const validReviewQueue = reviewQueue.filter(item => item.report?.user !== null);
+
+    // Calculate queue statistics using the same threshold
     const totalItems = await prismadb.reviewQueueItem.count({
       where: {
         organizationId: organization.id,
         accuracyScore: {
-          lt: 80
+          lt: REVIEW_THRESHOLD
         }
       }
     });
@@ -109,7 +114,7 @@ export async function GET(request: NextRequest) {
         organizationId: organization.id,
         status: 'pending',
         accuracyScore: {
-          lt: 80
+          lt: REVIEW_THRESHOLD
         }
       }
     });
@@ -124,7 +129,7 @@ export async function GET(request: NextRequest) {
           in: ['pending', 'in_review']
         },
         accuracyScore: {
-          lt: 80
+          lt: REVIEW_THRESHOLD
         }
       }
     });
@@ -137,7 +142,7 @@ export async function GET(request: NextRequest) {
           not: null
         },
         accuracyScore: {
-          lt: 80
+          lt: REVIEW_THRESHOLD
         }
       },
       _avg: {
@@ -146,12 +151,13 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({
-      items: reviewQueue,
+      items: validReviewQueue,
       stats: {
         totalItems,
         pendingItems,
         overdueItems,
-        avgAccuracy: resolutionData._avg?.accuracyScore || 0
+        avgAccuracy: resolutionData._avg?.accuracyScore || 0,
+        threshold: REVIEW_THRESHOLD
       }
     });
   } catch (error) {
@@ -195,7 +201,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Check if user is admin of this organization using proper Clerk API
+    // Check if user is admin of this organization
     let isOrgAdmin = false;
     try {
       const memberships = await clerkClient.users.getOrganizationMembershipList({
@@ -238,7 +244,7 @@ export async function PATCH(request: NextRequest) {
         reportUpdateData = {
           status: 'approved',
           reviewedAt: new Date(),
-          accuracyScore: Math.max(reviewItem.report.accuracyScore || 0, 80)
+          accuracyScore: Math.max(reviewItem.report.accuracyScore || 0, REVIEW_THRESHOLD)
         };
         break;
       
@@ -303,7 +309,8 @@ export async function PATCH(request: NextRequest) {
           action,
           notes,
           previousStatus: reviewItem.status,
-          newStatus: updateData.status
+          newStatus: updateData.status,
+          reportId: reviewItem.reportId
         })
       }
     });
