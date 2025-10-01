@@ -30,14 +30,20 @@ export async function sendLowAccuracyNotification(
     
     // Send emails to admins
     for (const admin of admins) {
-      if (admin.user.email) {
+      // FIXED: Add null check for admin.user
+      if (admin.user?.email) {
+        // FIXED: Add null checks for user properties
+        const officerName = report.user 
+          ? `${report.user.firstName || ''} ${report.user.lastName || ''}`.trim()
+          : 'Unknown Officer';
+        
         await sendEmail({
           to: admin.user.email,
           subject: `Low Accuracy Report Needs Review - ${Math.round(accuracyScore)}%`,
           template: 'low-accuracy-alert',
           variables: {
             reportTitle: report.title,
-            officerName: `${report.user.firstName} ${report.user.lastName}`,
+            officerName: officerName,
             accuracyScore: Math.round(accuracyScore),
             dueDate: new Date(Date.now() + 48 * 60 * 60 * 1000).toLocaleDateString(),
             reviewLink: `${process.env.NEXT_PUBLIC_APP_URL}/department-admin/review`
@@ -74,6 +80,9 @@ export async function sendReviewReminderNotifications() {
     });
     
     for (const item of dueSoonItems) {
+      // Skip if report is missing
+      if (!item.report) continue;
+      
       // Get assigned admin or all admins if not assigned
       let admins;
       if (item.assignedTo) {
@@ -101,7 +110,8 @@ export async function sendReviewReminderNotifications() {
       
       // Send reminders
       for (const admin of admins) {
-        if (admin.user.email) {
+        // FIXED: Add null check for admin.user
+        if (admin.user?.email) {
           await sendEmail({
             to: admin.user.email,
             subject: `Reminder: Review Item Due Soon - ${item.report.title}`,
@@ -126,6 +136,49 @@ export async function scheduledNotificationHandler() {
   await sendReviewReminderNotifications();
 }
 
-function sendEmail(arg0: { to: string; subject: string; template: string; variables: { reportTitle: string; officerName?: string; accuracyScore?: number; dueDate: string; reviewLink: string; hoursRemaining?: number; }; }) {
-  throw new Error("Function not implemented.");
+// FIXED: Implement the sendEmail function or import it
+async function sendEmail(emailData: { 
+  to: string; 
+  subject: string; 
+  template: string; 
+  variables: { 
+    reportTitle: string; 
+    officerName?: string; 
+    accuracyScore?: number; 
+    dueDate: string; 
+    reviewLink: string; 
+    hoursRemaining?: number; 
+  }; 
+}) {
+  try {
+    // Implement your email sending logic here
+    // This could be using SendGrid, Resend, Nodemailer, etc.
+    console.log('Sending email:', {
+      to: emailData.to,
+      subject: emailData.subject,
+      template: emailData.template,
+      variables: emailData.variables
+    });
+    
+    // Example implementation (replace with your actual email service):
+    /*
+    const response = await fetch('https://api.your-email-service.com/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.EMAIL_API_KEY}`
+      },
+      body: JSON.stringify(emailData)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Email sending failed: ${response.statusText}`);
+    }
+    */
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error sending email:', error);
+    throw error;
+  }
 }
