@@ -1,7 +1,7 @@
-// components/reports/sub-components/CorrectionUI.tsx
+// components/reports/sub-components/UnifiedCorrectionUI.tsx
 import { useState, useEffect } from "react";
 
-interface CorrectionUIProps {
+interface CorrectionData {
   error: string;
   missingFields: string[];
   requiredLevel?: string;
@@ -10,533 +10,443 @@ interface CorrectionUIProps {
   nibrsData: any;
   confidence?: any;
   correctionContext?: any;
+  type?: string;
+  isComplete?: boolean;
+  confidenceScore?: number;
+  source?: "nibrs" | "template";
+  errorCategory?: string;
+  severity?: "REQUIRED" | "WARNING" | "OPTIONAL";
+  guidance?: string;
+  categorizedFields?: any;
+  templateName?: string;
+}
+
+interface UnifiedCorrectionUIProps {
+  correctionData: CorrectionData;
   onCorrect: (correctedData: any) => void;
   onCancel: () => void;
   onAddMissingInfo?: (field: string) => void;
-  errorSource?: "template" | "nibrs";
-  type?: string;
 }
 
-const CorrectionUI = ({
-  error,
-  missingFields = [],
-  requiredLevel,
-  suggestions = [],
-  warnings = [],
-  nibrsData,
-  confidence,
-  correctionContext,
+const UnifiedCorrectionUI = ({
+  correctionData,
   onCorrect,
   onCancel,
-  onAddMissingInfo,
-  errorSource = "template",
-  type = "validation_error",
-}: CorrectionUIProps) => {
-  const [correctedData, setCorrectedData] = useState(nibrsData || {});
-  const [activeTab, setActiveTab] = useState("errors");
-  const [autoFixApplied, setAutoFixApplied] = useState(false);
-
-  // Determine error source from type if not explicitly provided
-  const actualErrorSource = errorSource || (type === "nibrs_validation_error" ? "nibrs" : "template");
+  onAddMissingInfo
+}: UnifiedCorrectionUIProps) => {
+  const [correctedData, setCorrectedData] = useState(correctionData.nibrsData || {});
+  const [selectedField, setSelectedField] = useState<string | null>(null);
+  const [customInput, setCustomInput] = useState("");
 
   // Get error source information
-  const getErrorSourceInfo = () => {
-    switch (actualErrorSource) {
+  const getErrorSourceInfo = (source: "template" | "nibrs") => {
+    switch (source) {
       case "template":
         return {
           title: "Template Requirements",
-          description: "These fields are required by the selected report template",
+          description: "Missing information for your report template",
           icon: "📋",
-          color: "blue",
-          badge: "Template"
+          color: "blue"
         };
       case "nibrs":
         return {
-          title: "NIBRS Standards",
-          description: "These fields are required for federal crime reporting standards",
+          title: "NIBRS Standards", 
+          description: "Required for federal crime reporting",
           icon: "🏛️",
-          color: "green",
-          badge: "NIBRS"
+          color: "green"
         };
       default:
         return {
           title: "Report Requirements",
           description: "Additional information needed",
           icon: "⚠️",
-          color: "gray",
-          badge: "Report"
+          color: "gray"
         };
     }
   };
 
-  const errorSourceInfo = getErrorSourceInfo();
-
-  // Enhanced initialization with victim inference
+  // Initialize corrected data
   useEffect(() => {
-    const initializedData = { ...nibrsData };
-    
-    // Ensure basic structure exists
-    if (!initializedData.victims) initializedData.victims = [];
-    if (!initializedData.properties) initializedData.properties = [];
-    if (!initializedData.offenders) initializedData.offenders = [];
-    if (!initializedData.offenses) initializedData.offenses = [];
-    if (!initializedData.administrative) initializedData.administrative = {};
-    
-    // Auto-fix common NIBRS issues (only for NIBRS errors)
-    if (actualErrorSource === "nibrs") {
-      const fixesApplied = applyNIBRSAutoFixes(initializedData);
-      if (fixesApplied) {
-        setAutoFixApplied(true);
+    if (correctionData.nibrsData) {
+      setCorrectedData(correctionData.nibrsData);
+    }
+  }, [correctionData.nibrsData]);
+
+  // Handle adding custom information to narrative
+  const handleAddCustomInfo = () => {
+    if (selectedField && customInput.trim() && onAddMissingInfo) {
+      onAddMissingInfo(`${selectedField}: ${customInput}`);
+      setSelectedField(null);
+      setCustomInput("");
+    }
+  };
+
+  // Quick add options for common fields
+  const getQuickOptions = (field: string) => {
+    const options: { [key: string]: string[] } = {
+      "victim information": [
+        "Adult male victim, approximately 30 years old",
+        "Female victim, minor injuries sustained",
+        "Multiple victims involved in the incident",
+        "Business victim, property damage only"
+      ],
+      "location": [
+        "Residential address at 123 Main Street",
+        "Commercial establishment on Oak Avenue", 
+        "Public park near downtown area",
+        "Parking lot of shopping center"
+      ],
+      "offense description": [
+        "Forcible entry burglary of residence",
+        "Simple assault resulting in minor injuries",
+        "Theft of personal property from vehicle",
+        "Drug possession violation observed"
+      ],
+      "property details": [
+        "Electronic devices valued at $500",
+        "Cash amount of $250 stolen",
+        "Vehicle damaged during incident",
+        "Personal documents and identification"
+      ],
+      "incident date and time": [
+        "Occurred on today's date during daylight hours",
+        "Incident happened yesterday evening around 8 PM",
+        "Date of occurrence is within the past 24 hours",
+        "Time of incident was during business hours"
+      ]
+    };
+
+    const fieldLower = field.toLowerCase();
+    for (const [key, values] of Object.entries(options)) {
+      if (fieldLower.includes(key)) {
+        return values;
       }
     }
     
-    // Initialize missing fields from validation
-    missingFields.forEach(field => {
-      if (field.includes("Date") && !initializedData.administrative.incidentDate) {
-        initializedData.administrative.incidentDate = new Date().toISOString().split('T')[0];
-      }
-      if (field.includes("Victim") && initializedData.victims.length === 0) {
-        // Determine victim type based on offenses
-        const victimType = determineVictimType(initializedData.offenses);
-        initializedData.victims.push({ 
-          type: victimType,
-          injury: 'N',
-          sex: 'U',
-          race: 'U',
-          ethnicity: 'U'
-        });
-      }
-      if (field.includes("Property") && initializedData.properties.length === 0) {
-        initializedData.properties.push({});
-      }
-      if (field.includes("Offense") && initializedData.offenses.length === 0) {
-        initializedData.offenses.push({ description: "", code: "" });
-      }
-    });
-    
-    setCorrectedData(initializedData);
-  }, [missingFields, nibrsData, actualErrorSource]);
+    return [
+      `Detailed information about ${field.toLowerCase()}`,
+      `Specific circumstances regarding ${field.toLowerCase()}`,
+      `Complete description of ${field.toLowerCase()}`,
+      `Additional details for ${field.toLowerCase()}`
+    ];
+  };
 
-  // Helper function to auto-fix common NIBRS issues
-  const applyNIBRSAutoFixes = (data: any): boolean => {
-    let fixesApplied = false;
+  // Handle quick add
+  const handleQuickAdd = (field: string, option: string) => {
+    if (onAddMissingInfo) {
+      onAddMissingInfo(option);
+    }
+  };
 
-    // Fix: Add Society victim for victimless offenses
-    if (data.offenses && data.offenses.length > 0 && (!data.victims || data.victims.length === 0)) {
-      const victimlessOffenses = ['Drug/Narcotic Violation', 'Weapon Law Violation', 'Driving Under Influence'];
-      const hasVictimless = data.offenses.some((offense: any) =>
-        victimlessOffenses.includes(offense.description)
-      );
+  // Handle form field changes for NIBRS data
+  const handleFieldChange = (fieldType: string, value: string) => {
+    setCorrectedData((prev: any) => {
+      const newData = { ...prev };
       
-      if (hasVictimless) {
-        data.victims = [{
-          type: 'S',
-          injury: 'N',
-          sex: 'U',
-          race: 'U',
-          ethnicity: 'U'
-        }];
-        fixesApplied = true;
+      switch (fieldType) {
+        case "incidentDate":
+          if (!newData.administrative) newData.administrative = {};
+          newData.administrative.incidentDate = value;
+          break;
+        case "victimType":
+          if (!newData.victims || newData.victims.length === 0) {
+            newData.victims = [{}];
+          }
+          newData.victims[0].type = value;
+          break;
+        case "offenseDescription":
+          if (!newData.offenses || newData.offenses.length === 0) {
+            newData.offenses = [{}];
+          }
+          newData.offenses[0].description = value;
+          break;
+        case "propertyDescription":
+          if (!newData.properties || newData.properties.length === 0) {
+            newData.properties = [{}];
+          }
+          newData.properties[0].description = value;
+          break;
       }
-    }
-
-    // Fix: Ensure victim type matches offense type
-    if (data.victims && data.victims.length > 0 && data.offenses && data.offenses.length > 0) {
-      const appropriateVictimType = determineVictimType(data.offenses);
-      data.victims.forEach((victim: any) => {
-        if (victim.type !== appropriateVictimType) {
-          victim.type = appropriateVictimType;
-          fixesApplied = true;
-        }
-      });
-    }
-
-    return fixesApplied;
+      
+      return newData;
+    });
   };
 
-  // Determine appropriate victim type based on offenses
-  const determineVictimType = (offenses: any[]): string => {
-    if (!offenses || offenses.length === 0) return 'U';
-    
-    const victimlessOffenses = ['Drug/Narcotic Violation', 'Weapon Law Violation', 'Driving Under Influence'];
-    const hasVictimless = offenses.some((offense: any) =>
-      victimlessOffenses.includes(offense.description)
-    );
-    
-    if (hasVictimless && offenses.every(offense => victimlessOffenses.includes(offense.description))) {
-      return 'S';
-    }
-    
-    return 'I';
-  };
-
-  const tabs = [
-    { id: "errors", label: "Errors", color: "red" },
-    { id: "missing", label: "Missing Info", color: "blue" },
-    { id: "suggestions", label: "Suggestions", color: "green" },
-    { id: "warnings", label: "Warnings", color: "yellow" },
-    ...(actualErrorSource === "nibrs" ? [{ id: "auto-fixes", label: "Auto-Fixes", color: "purple" }] : []),
-  ];
-
-  const renderMissingFieldsForm = () => {
-    // Unified validation mode (template requirements)
-    if (onAddMissingInfo && missingFields.length > 0) {
-      return (
-        <div className="space-y-4">
-          <div className={`p-4 bg-${errorSourceInfo.color}-50 border border-${errorSourceInfo.color}-200 rounded-lg`}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center">
-                <span className="text-lg mr-2">{errorSourceInfo.icon}</span>
-                <h4 className="font-medium text-gray-800">{errorSourceInfo.title}</h4>
-              </div>
-              <span className={`px-2 py-1 text-xs font-medium bg-${errorSourceInfo.color}-100 text-${errorSourceInfo.color}-800 rounded-full`}>
-                {errorSourceInfo.badge}
-              </span>
-            </div>
-            <p className="text-sm text-gray-600">{errorSourceInfo.description}</p>
-          </div>
-          
-          <h4 className="font-medium text-blue-800 mb-2">Missing Required Information</h4>
-          <p className="text-sm text-gray-600 mb-3">
-            Please add the following information to your narrative:
-          </p>
-          {missingFields.map((field, index) => (
-            <div key={index} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-blue-800">{field}</span>
-                <button
-                  onClick={() => onAddMissingInfo(field)}
-                  className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition"
-                >
-                  Add Information
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    // NIBRS correction form
-    return (
-      <div className="space-y-4">
-        <div className={`p-4 bg-${errorSourceInfo.color}-50 border border-${errorSourceInfo.color}-200 rounded-lg`}>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center">
-              <span className="text-lg mr-2">{errorSourceInfo.icon}</span>
-              <h4 className="font-medium text-gray-800">{errorSourceInfo.title}</h4>
-            </div>
-            <span className={`px-2 py-1 text-xs font-medium bg-${errorSourceInfo.color}-100 text-${errorSourceInfo.color}-800 rounded-full`}>
-              {errorSourceInfo.badge}
-            </span>
-          </div>
-          <p className="text-sm text-gray-600">{errorSourceInfo.description}</p>
-        </div>
-
-        <h4 className="font-medium text-gray-800 mb-2">Missing Information</h4>
-        
-        {missingFields.map((field, index) => (
-          <div key={index} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <label className="block text-sm font-medium text-blue-800 mb-1">
-              {field}
-            </label>
-            
-            {field.includes("Date") && (
-              <input
-                type="date"
-                className="w-full p-2 border border-gray-300 rounded"
-                value={correctedData.administrative?.incidentDate || ""}
-                onChange={(e) => setCorrectedData({
-                  ...correctedData,
-                  administrative: {
-                    ...correctedData.administrative,
-                    incidentDate: e.target.value
-                  }
-                })}
-              />
-            )}
-            
-            {field.includes("Victim") && (
-              <div className="space-y-2">
-                <select
-                  className="w-full p-2 border border-gray-300 rounded"
-                  value={correctedData.victims[0]?.type || ""}
-                  onChange={(e) => {
-                    const newVictims = [...correctedData.victims];
-                    if (newVictims.length === 0) newVictims.push({});
-                    newVictims[0].type = e.target.value;
-                    setCorrectedData({...correctedData, victims: newVictims});
-                  }}
-                >
-                  <option value="">Select Victim Type</option>
-                  <option value="I">Individual (Assault, Theft, Burglary)</option>
-                  <option value="S">Society/Public (Drugs, Weapons, DUI)</option>
-                  <option value="B">Business</option>
-                  <option value="U">Unknown</option>
-                </select>
-                <p className="text-xs text-gray-500">
-                  💡 <strong>Individual</strong>: For assaults, thefts, burglaries<br />
-                  💡 <strong>Society/Public</strong>: For drug, weapon, DUI offenses
-                </p>
-              </div>
-            )}
-            
-            {field.includes("Property") && (
-              <input
-                type="text"
-                className="w-full p-2 border border-gray-300 rounded"
-                placeholder="Property description"
-                value={correctedData.properties[0]?.description || ""}
-                onChange={(e) => {
-                  const newProperties = [...correctedData.properties];
-                  if (newProperties.length === 0) newProperties.push({});
-                  newProperties[0].description = e.target.value;
-                  setCorrectedData({...correctedData, properties: newProperties});
-                }}
-              />
-            )}
-            
-            {field.includes("Offense") && (
-              <input
-                type="text"
-                className="w-full p-2 border border-gray-300 rounded"
-                placeholder="Offense description"
-                value={correctedData.offenses[0]?.description || ""}
-                onChange={(e) => {
-                  const newOffenses = [...correctedData.offenses];
-                  if (newOffenses.length === 0) newOffenses.push({});
-                  newOffenses[0].description = e.target.value;
-                  setCorrectedData({...correctedData, offenses: newOffenses});
-                }}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const renderAutoFixesTab = () => {
-    if (!autoFixApplied) {
-      return (
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <p className="text-gray-600 text-sm">No automatic fixes were applied.</p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-3">
-        <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-          <h4 className="font-medium text-purple-800 mb-2">Automatic Fixes Applied</h4>
-          <p className="text-purple-700 text-sm mb-2">
-            The following issues were automatically corrected:
-          </p>
-          <ul className="text-purple-600 text-sm list-disc list-inside space-y-1">
-            {correctedData.victims && correctedData.victims.length > 0 && (
-              <li>Added missing victim information based on offense types</li>
-            )}
-            {correctedData.victims?.[0]?.type === 'S' && (
-              <li>Set victim type to "Society/Public" for victimless offenses</li>
-            )}
-            {correctedData.administrative?.incidentDate && (
-              <li>Added default incident date</li>
-            )}
-          </ul>
-        </div>
-        
-        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-yellow-700 text-sm">
-            <strong>Note:</strong> Review the fixes above and click "Submit Fixed Report" to proceed.
-          </p>
-        </div>
-      </div>
-    );
-  };
-
-  const handleSubmitFixedReport = () => {
-    // Apply final validation before submitting
-    const finalData = { ...correctedData };
-    
-    // Ensure victim type consistency
-    if (finalData.victims && finalData.victims.length > 0) {
-      const appropriateType = determineVictimType(finalData.offenses);
-      finalData.victims.forEach((victim: any) => {
-        victim.type = appropriateType;
-      });
-    }
-    
-    onCorrect(finalData);
-  };
+  // Determine if we have both template and NIBRS errors
+  const hasTemplateErrors = correctionData.source === "template" || correctionData.type === "validation_error";
+  const hasNIBRSErrors = correctionData.source === "nibrs" || correctionData.type === "nibrs_validation_error";
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
-        <div className="flex items-center mb-6">
-          <span className="text-2xl mr-3">{errorSourceInfo.icon}</span>
-          <div className="flex-1">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold text-gray-800">
-                {onAddMissingInfo ? "Additional Information Required" : "Report Correction Needed"}
-              </h3>
-              <span className={`px-2 py-1 text-xs font-medium bg-${errorSourceInfo.color}-100 text-${errorSourceInfo.color}-800 rounded-full`}>
-                {errorSourceInfo.badge}
-              </span>
+      <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 rounded-lg bg-blue-100">
+              <span className="text-xl">⚠️</span>
             </div>
-            <p className="text-sm text-gray-500 mt-1">
-              {errorSourceInfo.description}
-            </p>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                Report Information Needed
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Please provide the missing details to complete your reports
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onCancel}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <span className="text-gray-400 hover:text-gray-600">✕</span>
+          </button>
+        </div>
+
+        {/* Main Content */}
+        <div className="p-6 space-y-6">
+          {/* Error Summary */}
+          <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-start space-x-2">
+              <span className="text-orange-500 mt-0.5">📝</span>
+              <div>
+                <h4 className="font-medium text-orange-800">Summary</h4>
+                <p className="text-orange-700 text-sm mt-1">{correctionData.error}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Template Errors Section */}
+          {hasTemplateErrors && (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="bg-blue-50 px-4 py-3 border-b border-blue-200">
+                <div className="flex items-center space-x-2">
+                  <span className="text-blue-600">📋</span>
+                  <h3 className="font-semibold text-blue-800">Narrative Report Requirements</h3>
+                </div>
+                <p className="text-blue-700 text-sm mt-1">
+                  These details are needed for your narrative report template
+                </p>
+              </div>
+              
+              <div className="p-4 space-y-4">
+                {correctionData.missingFields?.map((field, index) => (
+                  <div key={index} className="p-4 bg-white border border-gray-200 rounded-lg">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h4 className="font-medium text-gray-900">{field}</h4>
+                        <p className="text-gray-500 text-sm mt-1">
+                          Required for complete narrative report
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setSelectedField(field)}
+                        className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                      >
+                        Add Information
+                      </button>
+                    </div>
+
+                    {/* Quick Add Options */}
+                    <div className="mt-3">
+                      <p className="text-sm text-gray-600 mb-2">Quick options:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {getQuickOptions(field).map((option, optionIndex) => (
+                          <button
+                            key={optionIndex}
+                            onClick={() => handleQuickAdd(field, option)}
+                            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded transition-colors"
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* NIBRS Errors Section */}
+          {hasNIBRSErrors && (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="bg-green-50 px-4 py-3 border-b border-green-200">
+                <div className="flex items-center space-x-2">
+                  <span className="text-green-600">🏛️</span>
+                  <h3 className="font-semibold text-green-800">NIBRS Standards</h3>
+                </div>
+                <p className="text-green-700 text-sm mt-1">
+                  Required for federal crime reporting compliance
+                </p>
+              </div>
+              
+              <div className="p-4 space-y-4">
+                {correctionData.missingFields?.map((field, index) => (
+                  <div key={index} className="p-4 bg-white border border-gray-200 rounded-lg">
+                    <h4 className="font-medium text-gray-900 mb-3">{field}</h4>
+                    
+                    {/* NIBRS Form Fields */}
+                    {field.toLowerCase().includes("date") && (
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-2">Incident Date</label>
+                        <input
+                          type="date"
+                          className="w-full p-2 border border-gray-300 rounded text-sm"
+                          value={correctedData.administrative?.incidentDate || ""}
+                          onChange={(e) => handleFieldChange("incidentDate", e.target.value)}
+                        />
+                      </div>
+                    )}
+                    
+                    {field.toLowerCase().includes("victim") && (
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-2">Victim Type</label>
+                        <select
+                          className="w-full p-2 border border-gray-300 rounded text-sm"
+                          value={correctedData.victims?.[0]?.type || ""}
+                          onChange={(e) => handleFieldChange("victimType", e.target.value)}
+                        >
+                          <option value="">Select victim type</option>
+                          <option value="I">👤 Individual (assaults, thefts, burglaries)</option>
+                          <option value="S">🏛️ Society/Public (drugs, weapons, DUI)</option>
+                          <option value="B">🏢 Business (commercial crimes)</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-2">
+                          💡 Use "Society/Public" for victimless offenses like drug violations
+                        </p>
+                      </div>
+                    )}
+                    
+                    {field.toLowerCase().includes("offense") && (
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-2">Offense Description</label>
+                        <input
+                          type="text"
+                          className="w-full p-2 border border-gray-300 rounded text-sm"
+                          placeholder="e.g., Burglary, Assault, Theft"
+                          value={correctedData.offenses?.[0]?.description || ""}
+                          onChange={(e) => handleFieldChange("offenseDescription", e.target.value)}
+                        />
+                      </div>
+                    )}
+                    
+                    {field.toLowerCase().includes("property") && (
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-2">Property Description</label>
+                        <input
+                          type="text"
+                          className="w-full p-2 border border-gray-300 rounded text-sm"
+                          placeholder="e.g., Stolen laptop, Damaged vehicle"
+                          value={correctedData.properties?.[0]?.description || ""}
+                          onChange={(e) => handleFieldChange("propertyDescription", e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Suggestions Section */}
+          {correctionData.suggestions && correctionData.suggestions.length > 0 && (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="bg-purple-50 px-4 py-3 border-b border-purple-200">
+                <div className="flex items-center space-x-2">
+                  <span className="text-purple-600">💡</span>
+                  <h3 className="font-semibold text-purple-800">Suggestions</h3>
+                </div>
+              </div>
+              
+              <div className="p-4">
+                <div className="space-y-3">
+                  {correctionData.suggestions.map((suggestion, index) => (
+                    <div key={index} className="flex items-start space-x-3 p-3 bg-purple-50 rounded">
+                      <span className="text-purple-500 mt-0.5">•</span>
+                      <p className="text-purple-800 text-sm">{suggestion}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Help Section */}
+          <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+            <h4 className="font-medium text-gray-800 mb-2">💡 How to proceed:</h4>
+            <ul className="text-gray-600 text-sm space-y-1">
+              {hasTemplateErrors && (
+                <li>• Use <strong>"Add Information"</strong> to add details to your narrative</li>
+              )}
+              {hasNIBRSErrors && (
+                <li>• Fill in the <strong>NIBRS form fields</strong> for federal reporting</li>
+              )}
+              <li>• Click <strong>"Submit Corrections"</strong> when all information is provided</li>
+            </ul>
           </div>
         </div>
 
-        {/* Success notification for auto-fixes */}
-        {autoFixApplied && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-green-700 text-sm flex items-center">
-              <span className="mr-2">✅</span>
-              <strong>Automatic fixes applied!</strong> Some issues have been automatically corrected. Please review below.
-            </p>
+        {/* Footer */}
+        <div className="flex justify-between items-center p-6 border-t border-gray-200 bg-gray-50">
+          <div className="text-sm text-gray-500">
+            {correctionData.missingFields?.length || 0} fields need attention
           </div>
-        )}
-
-        {/* Tabs - Only show if not unified validation */}
-        {!onAddMissingInfo && (
-          <div className="flex border-b border-gray-200 mb-4 overflow-x-auto">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                className={`flex-shrink-0 px-4 py-2 font-medium transition-colors duration-200 whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? `border-b-2 border-${tab.color}-600 text-${tab.color}-700`
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="flex space-x-3">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 border border-gray-300 rounded text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onCorrect(correctedData)}
+              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            >
+              Submit Corrections
+            </button>
           </div>
-        )}
-
-        {/* Unified Validation Mode */}
-        {onAddMissingInfo ? (
-          <div className="space-y-4">
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="font-medium text-blue-800 mb-2">Information Required</h4>
-              <p className="text-blue-700 text-sm">{error}</p>
-            </div>
-            {renderMissingFieldsForm()}
-          </div>
-        ) : (
-          <>
-            {/* Errors Tab */}
-            {activeTab === "errors" && (
-              <div className="space-y-4">
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <h4 className="font-medium text-red-800 mb-2">Validation Error</h4>
-                  <p className="text-red-700 text-sm">{error}</p>
-                </div>
-
-                {requiredLevel && (
-                  <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                    <h4 className="font-medium text-orange-800 mb-2">Required Level</h4>
-                    <p className="text-orange-700 text-sm">{requiredLevel}</p>
-                  </div>
-                )}
-
-                {/* NIBRS-specific guidance */}
-                {error.includes("victim") && (
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <h4 className="font-medium text-blue-800 mb-2">NIBRS Victim Guidance</h4>
-                    <p className="text-blue-700 text-sm">
-                      <strong>For drug, weapon, or DUI offenses:</strong> Use "Society/Public" victim type<br/>
-                      <strong>For assaults, thefts, burglaries:</strong> Use "Individual" victim type<br/>
-                      <strong>For business crimes:</strong> Use "Business" victim type
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Missing Info Tab */}
-            {activeTab === "missing" && missingFields.length > 0 && (
-              <div className="space-y-4">
-                {renderMissingFieldsForm()}
-              </div>
-            )}
-
-            {/* Suggestions Tab */}
-            {activeTab === "suggestions" && suggestions.length > 0 && (
-              <div className="space-y-3">
-                {suggestions.map((suggestion, i) => (
-                  <div
-                    key={i}
-                    className="p-4 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm"
-                  >
-                    <span className="mr-2">💡</span>
-                    {suggestion}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Warnings Tab */}
-            {activeTab === "warnings" && warnings.length > 0 && (
-              <div className="space-y-3">
-                {warnings.map((warning, i) => (
-                  <div
-                    key={i}
-                    className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm"
-                  >
-                    <span className="mr-2">⚠️</span>
-                    {warning}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Auto-Fixes Tab */}
-            {activeTab === "auto-fixes" && renderAutoFixesTab()}
-          </>
-        )}
-
-        {/* Action Buttons */}
-        <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
-          {onAddMissingInfo ? (
-            <>
-              <button
-                onClick={onCancel}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={onCancel}
-                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-              >
-                I'll Add the Information
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={onCancel}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmitFixedReport}
-                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-              >
-                {autoFixApplied ? "Submit Fixed Report" : "Submit Corrections"}
-              </button>
-            </>
-          )}
         </div>
       </div>
+
+      {/* Add Information Modal */}
+      {selectedField && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="font-semibold text-gray-900 mb-2">Add Information</h3>
+            <p className="text-gray-600 text-sm mb-4">
+              Add details about: <strong>{selectedField}</strong>
+            </p>
+            
+            <textarea
+              value={customInput}
+              onChange={(e) => setCustomInput(e.target.value)}
+              placeholder={`Describe ${selectedField.toLowerCase()}...`}
+              className="w-full h-32 p-3 border border-gray-300 rounded text-sm resize-none"
+            />
+            
+            <div className="flex justify-end space-x-3 mt-4">
+              <button
+                onClick={() => {
+                  setSelectedField(null);
+                  setCustomInput("");
+                }}
+                className="px-4 py-2 border border-gray-300 rounded text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddCustomInfo}
+                disabled={!customInput.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                Add to Narrative
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default CorrectionUI;
+export default UnifiedCorrectionUI;

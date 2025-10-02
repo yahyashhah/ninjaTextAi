@@ -112,7 +112,7 @@ async function getUserOrganization(userId: string) {
   }
 }
 
-// Unified validation function
+// Enhanced validation function with better error categorization
 async function validateInputCompleteness(narrative: string, template: any) {
   const requiredFields = template?.requiredFields || [];
 
@@ -175,6 +175,39 @@ RESPONSE FORMAT - JSON ONLY:
       promptForMissingInfo: `Please ensure you provide: ${requiredFields.join(', ')}`
     };
   }
+}
+
+// Enhanced error categorization function
+function categorizeMissingFields(missingFields: string[], source: "template" | "nibrs", templateName?: string) {
+  const categories = {
+    personal: ["victim", "offender", "age", "sex", "race", "ethnicity", "gender", "name"],
+    incident: ["date", "time", "location", "offense", "incident", "description"],
+    property: ["property", "value", "description", "loss", "item", "stolen"],
+    administrative: ["incident", "report", "officer", "number", "id"]
+  };
+
+  const categorized: { [key: string]: string[] } = {};
+
+  missingFields.forEach(field => {
+    const fieldLower = field.toLowerCase();
+    let categorizedField = false;
+    
+    for (const [category, keywords] of Object.entries(categories)) {
+      if (keywords.some(keyword => fieldLower.includes(keyword))) {
+        if (!categorized[category]) categorized[category] = [];
+        categorized[category].push(field);
+        categorizedField = true;
+        break;
+      }
+    }
+    
+    if (!categorizedField) {
+      if (!categorized.other) categorized.other = [];
+      categorized.other.push(field);
+    }
+  });
+
+  return categorized;
 }
 
 // Create system instructions for narrative report
@@ -255,14 +288,15 @@ function calculateAccuracyScore(data: any, validationErrors: string[] = [], warn
   return Math.max(0, Math.min(100, baseScore));
 }
 
-// Enhanced NIBRS error extraction
-function extractNIBRSErrorDetails(error: Error) {
+// Enhanced NIBRS error extraction with better categorization
+function extractNIBRSErrorDetails(error: Error, descriptiveData?: any) {
   const errorMessage = error.message || "NIBRS report generation failed";
   const details = {
     error: errorMessage,
     missingFields: [] as string[],
     warnings: [] as string[],
     suggestions: [] as string[],
+    categorizedFields: {} as any,
   };
 
   // Parse common NIBRS error patterns
@@ -300,6 +334,9 @@ function extractNIBRSErrorDetails(error: Error) {
     details.suggestions.push("Review the narrative for missing crime details");
     details.suggestions.push("Ensure all required NIBRS fields are provided");
   }
+
+  // Categorize the missing fields
+  details.categorizedFields = categorizeMissingFields(details.missingFields, "nibrs");
 
   return details;
 }
@@ -342,6 +379,13 @@ export async function POST(req: Request) {
           templateUsed: selectedTemplate?.templateName,
           error: `Validation failed: ${validationResult.missingFields.join(', ')}`
         });
+
+        // Enhanced error response with categorization
+        const categorizedFields = categorizeMissingFields(
+          validationResult.missingFields, 
+          "template", 
+          selectedTemplate?.templateName
+        );
         
         return NextResponse.json({
           type: "validation_error",
@@ -351,7 +395,12 @@ export async function POST(req: Request) {
           message: validationResult.promptForMissingInfo,
           isComplete: false,
           confidenceScore: validationResult.confidenceScore,
-          source: "template"
+          source: "template",
+          errorCategory: "TEMPLATE_REQUIREMENTS",
+          severity: "REQUIRED",
+          guidance: `The selected template "${selectedTemplate?.templateName}" requires these fields to generate a complete report.`,
+          categorizedFields: categorizedFields,
+          templateName: selectedTemplate?.templateName
         }, { status: 200 });
       }
     }
@@ -398,7 +447,10 @@ export async function POST(req: Request) {
         nibrsData: {}, // Empty NIBRS data since generation failed
         confidenceScore: 0,
         isComplete: false,
-        source: "nibrs"
+        source: "nibrs",
+        errorCategory: "NIBRS_STANDARDS",
+        severity: "REQUIRED",
+        guidance: "These fields are required by federal crime reporting standards (NIBRS)."
       }, { status: 200 });
     }
 

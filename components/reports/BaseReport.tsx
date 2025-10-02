@@ -1,3 +1,4 @@
+// components/reports/BaseReport.tsx
 "use client";
 
 import * as z from "zod";
@@ -46,17 +47,22 @@ interface BaseReportProps {
 
 interface CorrectionData {
   error: string;
+  missingFields: string[];
+  requiredLevel?: string;
+  suggestions: string[]; // Changed from optional to required array
+  warnings: string[];
   nibrsData: any;
-  suggestions?: string[];
   confidence?: any;
   correctionContext?: any;
-  warnings?: string[];
-  missingFields?: string[];
-  requiredLevel?: string;
   type?: string;
   isComplete?: boolean;
   confidenceScore?: number;
   source?: "nibrs" | "template";
+  errorCategory?: string;
+  severity?: "REQUIRED" | "WARNING" | "OPTIONAL";
+  guidance?: string;
+  categorizedFields?: any;
+  templateName?: string;
 }
 
 const BaseReport = ({
@@ -540,131 +546,6 @@ const BaseReport = ({
     }
   };
 
-  // Main form submission - GENERATES BOTH REPORTS
-  // In BaseReport component - update the onSubmit function
-const onSubmit = async (values: z.infer<typeof formSchema>) => {
-  try {
-    setIsLoading(true);
-    
-    if (!prompt.trim()) {
-      toast({
-        title: "Empty Content",
-        description: "Please provide some details",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const dataToSend = {
-      ...values,
-      prompt: prompt.trim(),
-      selectedTemplate: selectedTemplate || undefined,
-      generateBoth: true
-    };
-
-    console.log("Submitting for dual report generation...");
-
-    const response = await axios.post('/api/accident_report', dataToSend, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    // Handle BOTH types of validation errors
-    if (response.data.type === "validation_error" || response.data.type === "nibrs_validation_error") {
-      setCorrectionData({
-        type: response.data.type,
-        error: response.data.error,
-        missingFields: response.data.missingFields || [],
-        suggestions: response.data.suggestions || [],
-        warnings: response.data.warnings || [],
-        nibrsData: response.data.nibrsData || {},
-        isComplete: response.data.isComplete,
-        confidenceScore: response.data.confidenceScore,
-        source: response.data.source // Pass the error source
-      });
-
-      const errorTitle = response.data.type === "validation_error" 
-        ? "Template Requirements" 
-        : "NIBRS Standards";
-        
-      toast({
-        title: errorTitle,
-        description: "Please provide the missing information",
-        variant: "default",
-        duration: 5000,
-      });
-      return;
-    }
-
-    // Handle dual report success
-    if (response.data.narrative && response.data.nibrs) {
-      setNarrativeMessage(response.data.narrative);
-      setNibrsData(response.data.nibrs);
-      setXmlData(response.data.xml || null);
-      setAccuracyScore(response.data.accuracyScore || null);
-      setPrompt("");
-      form.reset();
-      setSelectedTemplate(null);
-      setInputMode('typing');
-      setShowDictationTemplate(false);
-      setShowRecordingControls(false);
-
-      toast({
-        title: "Success!",
-        description: "Both narrative and NIBRS reports generated successfully",
-        variant: "default",
-      });
-    } else {
-      throw new Error("Unexpected API response format");
-    }
-
-  } catch (error: any) {
-    console.error("Submission error:", error);
-    
-    if (error.response?.status === 400 && error.response.data) {
-      // Handle NIBRS-specific validation errors from older format
-      const {
-        error: apiError,
-        nibrs: nibrsData,
-        mappingConfidence,
-        correctionContext,
-        warnings,
-        missingFields,
-        requiredLevel,
-        suggestions
-      } = error.response.data;
-
-      setCorrectionData({
-        error: apiError,
-        nibrsData: nibrsData || {},
-        confidence: mappingConfidence || {},
-        correctionContext: correctionContext || {},
-        warnings: warnings || [],
-        missingFields: missingFields || [],
-        requiredLevel: requiredLevel || "",
-        suggestions: suggestions || [],
-        source: "nibrs"
-      });
-
-      toast({
-        title: "Correction Needed",
-        description: "Please review the report details",
-        variant: "default",
-        duration: 5000,
-      });
-    } else {
-      toast({
-        title: "Submission Error",
-        description: error.response?.data?.message || error.message || "Failed to submit report",
-        variant: "destructive",
-      });
-    }
-  } finally {
-    setIsLoading(false);
-  }
-};
-
   // Handle adding missing information from validation
   const handleAddMissingInfo = (field: string) => {
     const fieldPrompt = `Please provide information about ${field}: `;
@@ -674,6 +555,138 @@ const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setTimeout(() => {
       textareaRef.current?.focus();
     }, 100);
+  };
+
+  // Main form submission - GENERATES BOTH REPORTS
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    try {
+      setIsLoading(true);
+      
+      if (!prompt.trim()) {
+        toast({
+          title: "Empty Content",
+          description: "Please provide some details",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const dataToSend = {
+        ...values,
+        prompt: prompt.trim(),
+        selectedTemplate: selectedTemplate || undefined,
+        generateBoth: true
+      };
+
+      console.log("Submitting for dual report generation...");
+
+      const response = await axios.post('/api/accident_report', dataToSend, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      // Handle BOTH types of validation errors
+      if (response.data.type === "validation_error" || response.data.type === "nibrs_validation_error") {
+        setCorrectionData({
+          type: response.data.type,
+          error: response.data.error,
+          missingFields: response.data.missingFields || [],
+          suggestions: response.data.suggestions || [],
+          warnings: response.data.warnings || [],
+          nibrsData: response.data.nibrsData || {},
+          isComplete: response.data.isComplete,
+          confidenceScore: response.data.confidenceScore,
+          source: response.data.source,
+          errorCategory: response.data.errorCategory,
+          severity: response.data.severity,
+          guidance: response.data.guidance,
+          categorizedFields: response.data.categorizedFields,
+          templateName: response.data.templateName
+        });
+
+        const errorTitle = response.data.type === "validation_error" 
+          ? "Template Requirements" 
+          : "NIBRS Standards";
+          
+        toast({
+          title: errorTitle,
+          description: "Please provide the missing information",
+          variant: "default",
+          duration: 5000,
+        });
+        return;
+      }
+
+      // Handle dual report success
+      if (response.data.narrative && response.data.nibrs) {
+        setNarrativeMessage(response.data.narrative);
+        setNibrsData(response.data.nibrs);
+        setXmlData(response.data.xml || null);
+        setAccuracyScore(response.data.accuracyScore || null);
+        setPrompt("");
+        form.reset();
+        setSelectedTemplate(null);
+        setInputMode('typing');
+        setShowDictationTemplate(false);
+        setShowRecordingControls(false);
+
+        toast({
+          title: "Success!",
+          description: "Both narrative and NIBRS reports generated successfully",
+          variant: "default",
+        });
+      } else {
+        throw new Error("Unexpected API response format");
+      }
+
+    } catch (error: any) {
+      console.error("Submission error:", error);
+      
+      if (error.response?.status === 400 && error.response.data) {
+        // Handle NIBRS-specific validation errors from older format
+        const {
+          error: apiError,
+          nibrs: nibrsData,
+          mappingConfidence,
+          correctionContext,
+          warnings,
+          missingFields,
+          requiredLevel,
+          suggestions
+        } = error.response.data;
+
+        setCorrectionData({
+          error: apiError,
+          nibrsData: nibrsData || {},
+          confidence: mappingConfidence || {},
+          correctionContext: correctionContext || {},
+          warnings: warnings || [],
+          missingFields: missingFields || [],
+          requiredLevel: requiredLevel || "",
+          suggestions: suggestions || [],
+          source: "nibrs",
+          errorCategory: "NIBRS_STANDARDS",
+          severity: "REQUIRED",
+          guidance: "These fields are required by federal crime reporting standards (NIBRS)."
+        });
+
+        toast({
+          title: "Correction Needed",
+          description: "Please review the report details",
+          variant: "default",
+          duration: 5000,
+        });
+      } else {
+        toast({
+          title: "Submission Error",
+          description: error.response?.data?.message || error.message || "Failed to submit report",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Check if we have both reports
@@ -689,17 +702,10 @@ const onSubmit = async (values: z.infer<typeof formSchema>) => {
         helpContent={helpContent}
       />
       
-      {/* Correction Modal */}
+      {/* Unified Correction Modal */}
       {correctionData && (
         <CorrectionUI
-          error={correctionData.error}
-          missingFields={correctionData.missingFields || []}
-          requiredLevel={correctionData.requiredLevel || ""}
-          suggestions={correctionData.suggestions || []}
-          warnings={correctionData.warnings || []}
-          nibrsData={correctionData.nibrsData}
-          confidence={correctionData.confidence}
-          correctionContext={correctionData.correctionContext}
+          correctionData={correctionData}
           onCorrect={handleCorrectionSubmit}
           onCancel={() => setCorrectionData(null)}
           onAddMissingInfo={correctionData.type === "validation_error" ? handleAddMissingInfo : undefined}

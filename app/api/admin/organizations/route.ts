@@ -152,6 +152,17 @@ export async function GET(request: NextRequest) {
               members: true,
               reports: true
             }
+          },
+          members: {
+            include: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  email: true
+                }
+              }
+            }
           }
         }
       }),
