@@ -22,6 +22,9 @@ interface RecordingControlsProps {
   handleDrop: (e: React.DragEvent<HTMLDivElement>) => void;
   selectedFile: File | null;
   setSelectedFile: (file: File | null) => void;
+  // Add the missing props
+  isSpeechSupported?: boolean;
+  microphonePermission?: 'granted' | 'denied' | 'prompt';
 }
 
 const RecordingControls = ({
@@ -34,6 +37,14 @@ const RecordingControls = ({
   submitRecording,
   startRecording,
   isUploading,
+  uploadProgress,
+  handleFileSelect,
+  handleDragOver,
+  handleDrop,
+  selectedFile,
+  setSelectedFile,
+  isSpeechSupported = true,
+  microphonePermission = 'prompt',
 }: RecordingControlsProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -116,10 +127,16 @@ const RecordingControls = ({
             onClick={startRecording}
             variant="outline"
             className="border-blue-500 text-lg text-blue-500 w-full py-3 hover:bg-blue-50 mb-4"
-            disabled={isUploading}
+            disabled={isUploading || !isSpeechSupported || microphonePermission === 'denied'}
           >
             <Mic className="h-5 w-5 mr-4" />
             Start Recording
+            {!isSpeechSupported && (
+              <span className="text-xs text-red-500 ml-1">(Not supported)</span>
+            )}
+            {microphonePermission === 'denied' && (
+              <span className="text-xs text-red-500 ml-1">(Permission denied)</span>
+            )}
           </Button>
         </div>
       </div>
