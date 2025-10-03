@@ -66,7 +66,8 @@ export const checkApiLimit = async () => {
     where: { userId }
   });
 
-  return !userApiLimit || userApiLimit.count < MAX_COUNTS_FREE;
+  return !userApiLimit;
+  // return !userApiLimit || userApiLimit.count < MAX_COUNTS_FREE;
 };
 
 export const getApiLimit = async () => {
