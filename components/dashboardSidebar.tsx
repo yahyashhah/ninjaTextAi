@@ -66,7 +66,7 @@ const Sidebar = ({ apiLimitCount = 0, isPro = false, userId, setSidebarOpen }: S
         <ShowTutorialAgain userId={userId} setSidebarOpen={setSidebarOpen} />
       </div> */}
       
-      <FreeCounter isPro={isPro} apiLimitCount={apiLimitCount} />
+      {/* <FreeCounter isPro={isPro} apiLimitCount={apiLimitCount} /> */}
     </div>
   );
 };

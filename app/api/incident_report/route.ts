@@ -35,9 +35,9 @@ export async function POST(req: Request) {
     const freeTrail = await checkApiLimit();
     const isPro = await checkSubscription();
 
-    if (!freeTrail && !isPro) {
-      return new NextResponse("Free Trial has expired", { status: 403 });
-    }
+    // if (!freeTrail && !isPro) {
+    //   return new NextResponse("Free Trial has expired", { status: 403 });
+    // }
 
     const systemInstructions = selectedTemplate?.instructions || `
       Task: Be a Professional Police Report writer and accurately extract the following details:

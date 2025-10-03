@@ -61,10 +61,10 @@ export const sidebarRoutes = [
     href: "/history",
     color: "text-sky-500",
   },
-  {
-    label: "Refer a friend",
-    icon: SendToBack,
-    href: "/refer",
-    color: "text-pink-400",
-  },
+  // {
+  //   label: "Refer a friend",
+  //   icon: SendToBack,
+  //   href: "/refer",
+  //   color: "text-pink-400",
+  // },
 ];

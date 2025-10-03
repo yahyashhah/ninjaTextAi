@@ -358,7 +358,7 @@ export async function POST(req: Request) {
 
     const freeTrail = await checkApiLimit();
     const isPro = await checkSubscription();
-    if (!freeTrail && !isPro) return new NextResponse("Free Trial has expired", { status: 403 });
+    // if (!freeTrail && !isPro) return new NextResponse("Free Trial has expired", { status: 403 });
 
     // Get user's organization using shared utility
     const organization = await getUserOrganizationWithFallback(userId);
