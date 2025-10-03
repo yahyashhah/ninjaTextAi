@@ -107,7 +107,7 @@ const BaseReport = ({
   
   // States for templates and modes
   const [showDictationTemplate, setShowDictationTemplate] = useState(false);
-  const [inputMode, setInputMode] = useState<'typing' | 'recording' | 'ready-to-record'>('typing');
+  const [inputMode, setInputMode] = useState<'typing' | 'recording' | 'ready-to-record'>('ready-to-record');
   const [reviewModal, setReviewModal] = useState<{
     isOpen: boolean; 
     fieldName: string; 
@@ -192,20 +192,26 @@ const BaseReport = ({
     setShowDictationTemplate(false);
   };
 
-  // Actually start recording when user clicks "Start Recording"
   const startRecording = () => {
-    lastTranscriptRef.current = "";
-    startListening();
-    setIsListening(true);
-    setIsPaused(false);
-    setRecordingTime(0);
-    setShowRecordingControls(false);
-    setShowDictationTemplate(true);
-    setInputMode('recording');
-    timerRef.current = setInterval(() => {
-      setRecordingTime(prev => prev + 1);
-    }, 1000);
-  };
+  // Reset and prepare for new recording
+  lastTranscriptRef.current = "";
+  setPrompt(""); // Clear any existing content for fresh start
+  
+  startListening();
+  setIsListening(true);
+  setIsPaused(false);
+  setRecordingTime(0);
+  setShowRecordingControls(false);
+  setShowDictationTemplate(true);
+  setInputMode('recording');
+  
+  // Start timer
+  timerRef.current = setInterval(() => {
+    setRecordingTime(prev => prev + 1);
+  }, 1000);
+  
+  console.log("🎤 Recording started - ready for dictation");
+};
 
   // Pause recording handler
   const pauseRecording = () => {
@@ -233,7 +239,7 @@ const BaseReport = ({
     setIsPaused(false);
     setShowRecordingControls(false);
     setShowDictationTemplate(false);
-    setInputMode('typing');
+    setInputMode('ready-to-record');
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
@@ -427,40 +433,45 @@ const BaseReport = ({
     };
   }, []);
 
-  // Simplified review detection
   useEffect(() => {
-    if (isListening && transcript) {
-      const currentText = transcript.toLowerCase();
-      const lastText = lastTranscriptRef.current.toLowerCase();
+  if (isListening && transcript) {
+    // Only process if we have new transcript content
+    if (transcript !== lastTranscriptRef.current) {
+      const newContent = getNewContent(lastTranscriptRef.current, transcript);
       
-      if (currentText.includes(' review') && !lastText.includes(' review')) {
-        console.log('=== REVIEW DETECTED ===');
-        
-        setReviewModal({
-          isOpen: true,
-          fieldName: "segmentSelection",
-          options: []
+      if (newContent) {
+        setPrompt(prev => {
+          // Clean up any trailing spaces and add new content with proper spacing
+          const cleanPrev = prev.trim();
+          const cleanNew = newContent.trim();
+          
+          // If previous text ends with punctuation or is empty, don't add space
+          if (!cleanPrev || /[.!?]\s*$/.test(cleanPrev)) {
+            return cleanPrev + ' ' + cleanNew;
+          } else {
+            return cleanPrev + ' ' + cleanNew;
+          }
         });
-        
-        const cleanTranscript = transcript.replace(/\s*review\b\s*/gi, ' ').trim();
-        if (cleanTranscript !== transcript) {
-          setPrompt(prev => prev + ' ' + cleanTranscript);
-          lastTranscriptRef.current = cleanTranscript;
-          return;
-        }
       }
       
-      if (transcript !== lastTranscriptRef.current) {
-        if (lastTranscriptRef.current && transcript.startsWith(lastTranscriptRef.current)) {
-          const newContent = transcript.slice(lastTranscriptRef.current.length);
-          setPrompt(prev => prev + newContent);
-        } else {
-          setPrompt(transcript);
-        }
-        lastTranscriptRef.current = transcript;
-      }
+      lastTranscriptRef.current = transcript;
     }
-  }, [transcript, isListening]);
+  }
+}, [transcript, isListening]);
+
+// Helper function to extract only new content from transcript
+const getNewContent = (previous: string, current: string): string => {
+  if (!previous) return current;
+  
+  // Simple approach: if current starts with previous, return the difference
+  if (current.startsWith(previous)) {
+    return current.slice(previous.length).trim();
+  }
+  
+  // Fallback: return current if no clear overlap
+  // This handles cases where speech recognition corrects previous words
+  return current;
+};
 
   // Auto-resize textarea
   useEffect(() => {
@@ -627,7 +638,7 @@ const BaseReport = ({
         setPrompt("");
         form.reset();
         setSelectedTemplate(null);
-        setInputMode('typing');
+        setInputMode('ready-to-record');
         setShowDictationTemplate(false);
         setShowRecordingControls(false);
 

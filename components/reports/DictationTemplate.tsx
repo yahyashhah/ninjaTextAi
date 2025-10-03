@@ -152,11 +152,11 @@ const DictationTemplate = ({
                   <Button
                     onClick={onStopRecording}
                     variant="outline"
-                    className="border-red-500 text-red-500 hover:bg-red-50"
+                    className="border-gray-500 text-gray-500 hover:bg-gray-50"
                     size="sm"
                   >
                     <Square className="h-4 w-4 mr-2" />
-                    Stop
+                    Stop Recording
                   </Button>
                 </>
               ) : (
@@ -171,11 +171,20 @@ const DictationTemplate = ({
                     Pause
                   </Button>
                   <Button
+                    onClick={onStopRecording}
+                    variant="outline"
+                    className="border-gray-500 text-gray-500 hover:bg-gray-50"
+                    size="sm"
+                  >
+                    <Square className="h-4 w-4 mr-2" />
+                    Stop
+                  </Button>
+                  <Button
                     onClick={onSubmitRecording}
                     className="bg-blue-600 hover:bg-blue-700"
                     size="sm"
                   >
-                    Submit Recording
+                    Submit Report
                   </Button>
                 </>
               )}
@@ -260,9 +269,9 @@ const DictationTemplate = ({
       <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
         <p className="text-sm text-yellow-800 font-medium">
           {isPaused ? (
-            <>⏸️ Recording paused. Click "Resume" to continue or "Stop" to end recording.</>
+            <>⏸️ Recording paused. Click "Resume" to continue or "Stop Recording" to end without submitting.</>
           ) : isRecording ? (
-            <>💡 Tip: Speak clearly and naturally. For any field you're unsure about, simply say "review" and we'll help you complete it later.</>
+            <>💡 Tip: Speak clearly and naturally. Use "Stop" to end recording or "Submit Report" to generate your report.</>
           ) : (
             <>💡 Tip: Click "Start Recording" above to begin dictating your report using this template as a guide.</>
           )}

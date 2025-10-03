@@ -29,6 +29,9 @@ interface PromptInputProps {
   inputMode: 'typing' | 'recording' | 'ready-to-record';
   onSwitchMode: (mode: 'typing' | 'recording') => void;
   onWritingStart: () => void;
+  // Add the missing props
+  isSpeechSupported?: boolean;
+  microphonePermission?: 'granted' | 'denied' | 'prompt';
 }
 
 const PromptInput = ({
@@ -51,6 +54,8 @@ const PromptInput = ({
   inputMode,
   onSwitchMode,
   onWritingStart,
+  isSpeechSupported = true,
+  microphonePermission = 'prompt',
 }: PromptInputProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -113,10 +118,16 @@ const PromptInput = ({
       size="sm"
       onClick={() => onSwitchMode('recording')}
       className="flex items-center gap-2"
-      disabled={isLoading || isUploading}
+      disabled={isLoading || isUploading || !isSpeechSupported || microphonePermission === 'denied'}
     >
       <Mic className="h-4 w-4" />
       Dictate Report
+      {!isSpeechSupported && (
+        <span className="text-xs text-red-500 ml-1">(Not supported)</span>
+      )}
+      {microphonePermission === 'denied' && (
+        <span className="text-xs text-red-500 ml-1">(Permission denied)</span>
+      )}
     </Button>
   </div>
 )}
@@ -149,7 +160,7 @@ const PromptInput = ({
                       placeholder="Type your report, speak using the mic, or upload an audio recording"
                       value={prompt}
                       onChange={handleTextChange}
-                      onFocus={handleTextFocus}
+                      // onFocus={handleTextFocus}
                       rows={3}
                       style={{ minHeight: "80px", maxHeight: "300px" }}
                     />
