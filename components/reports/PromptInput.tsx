@@ -195,9 +195,9 @@ const PromptInput = ({
               </TooltipProvider>
 
               <Button
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-full flex-shrink-0"
+                className={`bg-blue-600 hover:bg-blue-700 text-white rounded-full flex-shrink-0 ${inputMode === 'recording' ? 'hidden' : 'block'}`}
                 type="submit"
-                disabled={isLoading || isUploading || !prompt.trim()}
+                disabled={isLoading || isUploading || !prompt.trim() || inputMode === 'recording'}
                 size="icon"
               >
                 <ArrowUp className="h-4 w-4" />

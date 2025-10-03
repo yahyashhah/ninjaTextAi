@@ -103,11 +103,11 @@ const RecordingControls = ({
   return (
     <div className={cn(
       "absolute",
-      "bottom-40", // Default position
-      "md:bottom-44", // Slightly higher on medium screens
-      "lg:bottom-48", // Higher on large screens
-      "xl:bottom-[13rem]", // Even higher on extra large screens
-      "2xl:bottom-60", // Highest on 2xl screens
+      "bottom-44", // Default position
+      "md:bottom-48", // Slightly higher on medium screens
+      "lg:bottom-[220px]", // Higher on large screens
+      "xl:bottom-[15rem]", // Even higher on extra large screens
+      "2xl:bottom-64", // Highest on 2xl screens
       "left-0 right-0 pt-4 rounded-t-lg"
     )}>
       <div className={cn(
