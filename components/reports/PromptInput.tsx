@@ -195,7 +195,7 @@ const PromptInput = ({
               </TooltipProvider>
 
               <Button
-                className={`bg-blue-600 hover:bg-blue-700 text-white rounded-full flex-shrink-0 ${inputMode === 'recording' ? 'hidden' : 'block'}`}
+                className={`bg-blue-600 hover:bg-blue-700 text-white rounded-full flex-shrink-0 ${inputMode === 'recording' ? 'hidden' : 'flex'}`}
                 type="submit"
                 disabled={isLoading || isUploading || !prompt.trim() || inputMode === 'recording'}
                 size="icon"
