@@ -1,5 +1,4 @@
-// app/department-admin/page.tsx
-"use client";
+'use client';
 
 import { useAuth, useOrganization } from "@clerk/nextjs";
 import { useEffect, useState, useCallback } from "react";
@@ -20,7 +19,8 @@ import {
   Upload,
   Eye,
   Search,
-  RefreshCw
+  RefreshCw,
+  LayoutTemplate
 } from "lucide-react";
 import Link from "next/link";
 import { ReviewQueue } from "@/components/department-admin/review-queue";
@@ -31,6 +31,7 @@ import { MemberManagement } from "@/components/department-admin/member-managemen
 import { useRouter } from "next/navigation";
 import { AuthLogs } from "@/components/department-admin/auth-logs";
 import { ReportViewModal } from "@/components/department-admin/report-view-modal";
+import { TemplatesManagement } from "@/components/department-admin/templates-management";
 
 interface DepartmentData {
   stats: {
@@ -96,6 +97,24 @@ interface ReportsResponse {
   };
 }
 
+interface DepartmentTemplate {
+  id: string;
+  templateName: string;
+  instructions: string;
+  reportTypes: string[];
+  examples?: string;
+  requiredFields: string[];
+  fieldDefinitions: any;
+  strictMode: boolean;
+  isActive: boolean;
+  createdAt: string;
+  creator: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+}
+
 export default function DepartmentAdminPage() {
   const { userId } = useAuth();
   const router = useRouter();
@@ -120,6 +139,10 @@ export default function DepartmentAdminPage() {
     type: '',
     search: ''
   });
+
+  // Templates state
+  const [templates, setTemplates] = useState<DepartmentTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
 
   // Modal state
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -179,18 +202,45 @@ export default function DepartmentAdminPage() {
     }
   }, [organization?.id, reportsFilters]);
 
+  // Fetch templates data
+  const fetchTemplates = useCallback(async () => {
+    if (!organization?.id) return;
+    
+    try {
+      setTemplatesLoading(true);
+      const response = await fetch(`/api/department/templates?orgId=${organization.id}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch templates');
+      }
+      
+      const result = await response.json();
+      setTemplates(result.templates || []);
+    } catch (error) {
+      console.error("Error fetching templates:", error);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, [organization?.id]);
+
   useEffect(() => {
     if (organization) {
       fetchDepartmentData();
     }
   }, [organization, fetchDepartmentData]);
 
-  // Fetch reports when reports tab is active
+  // Fetch data when tabs are active
   useEffect(() => {
     if (activeTab === "all-reports" && organization?.id) {
       fetchReports();
     }
   }, [activeTab, organization?.id, fetchReports]);
+
+  useEffect(() => {
+    if (activeTab === "templates" && organization?.id) {
+      fetchTemplates();
+    }
+  }, [activeTab, organization?.id, fetchTemplates]);
 
   const handleRoleSwitch = () => {
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
@@ -218,6 +268,12 @@ export default function DepartmentAdminPage() {
     fetchReports(newPage);
   };
 
+  const handleRefreshData = () => {
+    fetchDepartmentData();
+    if (activeTab === "all-reports") fetchReports();
+    if (activeTab === "templates") fetchTemplates();
+  };
+
   // Filter reports based on search
   const filteredReports = reports.filter(report => {
     if (!reportsFilters.search) return true;
@@ -231,6 +287,9 @@ export default function DepartmentAdminPage() {
       report.reportType.toLowerCase().includes(searchTerm)
     );
   });
+
+  const activeTemplates = templates.filter(t => t.isActive);
+  const inactiveTemplates = templates.filter(t => !t.isActive);
 
   // Show loading state only for initial load, not tab switches
   if (isLoading && !data) {
@@ -321,7 +380,7 @@ export default function DepartmentAdminPage() {
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={fetchDepartmentData}
+            onClick={handleRefreshData}
             disabled={isLoading}
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
@@ -331,9 +390,15 @@ export default function DepartmentAdminPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 mb-8">
+        <TabsList className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 mb-8">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="review">Review Queue ({data?.stats?.reviewQueueCount || 0})</TabsTrigger>
+          <TabsTrigger value="templates">
+            <div className="flex items-center gap-1">
+              <LayoutTemplate className="h-4 w-4" />
+              Templates ({templates.length})
+            </div>
+          </TabsTrigger>
           <TabsTrigger value="members">Members ({data?.stats?.totalMembers || 0})</TabsTrigger>
           <TabsTrigger value="reports">Monthly Reports</TabsTrigger>
           <TabsTrigger value="all-reports">All Reports ({reportsPagination.totalCount || 0})</TabsTrigger>
@@ -408,6 +473,14 @@ export default function DepartmentAdminPage() {
                 <Button 
                   variant="outline" 
                   className="w-full justify-start"
+                  onClick={() => setActiveTab("templates")}
+                >
+                  <LayoutTemplate className="h-4 w-4 mr-2" />
+                  Manage Templates ({templates.length})
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
                   onClick={() => setActiveTab("reports")}
                 >
                   <Download className="h-4 w-4 mr-2" />
@@ -440,12 +513,60 @@ export default function DepartmentAdminPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Templates Overview Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LayoutTemplate className="h-5 w-5" />
+                Template Overview
+              </CardTitle>
+              <CardDescription>
+                Quick overview of your department templates
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">{templates.length}</div>
+                  <div className="text-sm text-muted-foreground">Total Templates</div>
+                </div>
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">{activeTemplates.length}</div>
+                  <div className="text-sm text-muted-foreground">Active</div>
+                </div>
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold text-orange-600">{inactiveTemplates.length}</div>
+                  <div className="text-sm text-muted-foreground">Inactive</div>
+                </div>
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {new Set(templates.flatMap(t => t.reportTypes)).size}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Report Types</div>
+                </div>
+              </div>
+              <Button 
+                onClick={() => setActiveTab("templates")}
+                className="w-full"
+              >
+                <LayoutTemplate className="h-4 w-4 mr-2" />
+                Manage All Templates
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
         
         <TabsContent value="review">
           <ReviewQueue 
             items={data?.reviewQueue || []} 
             onRefresh={fetchDepartmentData}
+          />
+        </TabsContent>
+        
+        <TabsContent value="templates">
+          <TemplatesManagement 
+            organizationId={organization.id}
           />
         </TabsContent>
         

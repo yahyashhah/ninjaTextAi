@@ -49,6 +49,7 @@ model User {
   feedbacks         Feedback[]
   departmentReports DepartmentReport[]
   departmentActivities DepartmentActivityLog[]
+  createdTemplates DepartmentTemplate[]
 }
 
 model OrganizationSubscription {
@@ -102,6 +103,8 @@ model UserReports {
   reportName String?
   reportText String?
   tag        String?
+  offenseType String?
+  offenseCode String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
@@ -163,6 +166,7 @@ model ReportEvent {
   success         Boolean
   templateUsed    String?
   error           String?
+  offenseType     String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -234,6 +238,7 @@ model Organization {
   reviewQueue      ReviewQueueItem[]
   activityLogs     DepartmentActivityLog[]
   monthlyReports   DepartmentMonthlyReport[]
+  departmentTemplates DepartmentTemplate[]
 
   @@index([name])
   @@index([type])
@@ -265,7 +270,11 @@ model DepartmentReport {
   accuracyScore     Float?   
   missingFields     String[]  
   warnings          String[]
-  templateUsed      String?   
+  templateUsed      String?
+  templateId       String?
+  template         DepartmentTemplate? @relation(fields: [templateId], references: [id])
+  offenseType String?
+  offenseCode String?
 
   reviewQueueItems ReviewQueueItem[]
 
@@ -333,4 +342,28 @@ model DepartmentMonthlyReport {
   @@unique([organizationId, month, year])
   @@index([organizationId])
   @@index([year, month])
+}
+
+model DepartmentTemplate {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  templateName     String
+  instructions     String
+  examples         String?
+  reportTypes      String[]
+  requiredFields   String[]
+  fieldDefinitions Json?
+  strictMode       Boolean  @default(true)
+  isActive         Boolean  @default(true)
+  createdBy        String   // clerkUserId of department admin
+  creator          User?    @relation(fields: [createdBy], references: [clerkUserId])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  reports          DepartmentReport[]
+
+  @@index([organizationId])
+  @@index([isActive])
+  @@index([reportTypes])
 }

@@ -1,5 +1,38 @@
-// components/reports/sub-components/UnifiedCorrectionUI.tsx
+// components/reports/sub-components/EnhancedCorrectionUI.tsx - UPDATED WITH OFFENSE TYPE MISMATCH
 import { useState, useEffect } from "react";
+import { OffenseType, GROUP_A_OFFENSES } from "@/constants/offences";
+import { getFieldExamples, getQuickFillOptions } from "@/lib/field-utils";
+import MultiOffenseSelector from "./OffenceSelector";
+
+interface ExtractedFieldData {
+  field: string;
+  value: string;
+  confidence: number;
+  source: string;
+}
+
+interface OffenseValidationResult {
+  suggestedOffense: OffenseType | null;
+  confidence: number;
+  reason: string;
+  matches: string[];
+  mismatches: string[];
+  alternativeOffenses: OffenseType[];
+}
+
+interface MultiOffenseValidation {
+  validatedOffenses: {
+    offense: OffenseType;
+    validation: any;
+    offenseValidation?: any;
+  }[];
+  allComplete: boolean;
+  combinedMissingFields: string[];
+  combinedPresentFields: string[];
+  primaryOffense?: OffenseType;
+  allExtractedData?: ExtractedFieldData[];
+  allStructuredData?: Record<string, any>;
+}
 
 interface CorrectionData {
   error: string;
@@ -13,248 +46,731 @@ interface CorrectionData {
   type?: string;
   isComplete?: boolean;
   confidenceScore?: number;
-  source?: "nibrs" | "template";
+  source?: "nibrs" | "template" | "offense";
   errorCategory?: string;
   severity?: "REQUIRED" | "WARNING" | "OPTIONAL";
   guidance?: string;
   categorizedFields?: any;
   templateName?: string;
+  offenseName?: string;
+  offenseCode?: string;
+  offenses?: OffenseType[];
+  fieldExamples?: { [key: string]: string };
+  validationDetails?: any;
+  sessionKey?: string;
+  originalNarrative?: string;
+  offenseValidation?: OffenseValidationResult;
+  multiOffenseValidation?: MultiOffenseValidation;
+  extractedData?: ExtractedFieldData[];
+  structuredData?: Record<string, any>;
+  missingUniversalFields?: string[];
 }
 
-interface UnifiedCorrectionUIProps {
+interface EnhancedCorrectionUIProps {
   correctionData: CorrectionData;
-  onCorrect: (correctedData: any) => void;
+  onCorrect: (correctedData: { 
+    enhancedPrompt: string; 
+    sessionKey?: string;
+    newOffenses?: OffenseType[];
+  }) => void;
   onCancel: () => void;
-  onAddMissingInfo?: (field: string) => void;
+  currentInput: string;
+  offenses: OffenseType[];
 }
 
-const UnifiedCorrectionUI = ({
+// UNIVERSAL FIELD DEFINITIONS - MATCHING BACKEND
+const UNIVERSAL_REQUIRED_FIELDS = [
+  'incidentDate',
+  'incidentTime', 
+  'locationDescription'
+];
+
+const UNIVERSAL_FIELD_DEFINITIONS = {
+  incidentDate: {
+    label: "Incident Date",
+    description: "The date when the incident occurred",
+    required: true,
+    examples: "2024-01-15, January 15, 2024, yesterday, last Tuesday"
+  },
+  incidentTime: {
+    label: "Incident Time", 
+    description: "The time when the incident occurred",
+    required: true,
+    examples: "14:30, 2:30 PM, around noon, approximately 10:00"
+  },
+  locationDescription: {
+    label: "Location Description",
+    description: "Where the incident took place",
+    required: true,
+    examples: "123 Main Street, parking lot of Walmart, near the intersection of 5th and Elm"
+  }
+};
+
+const CorrectionUI = ({
   correctionData,
   onCorrect,
   onCancel,
-  onAddMissingInfo
-}: UnifiedCorrectionUIProps) => {
-  const [correctedData, setCorrectedData] = useState(correctionData.nibrsData || {});
-  const [selectedField, setSelectedField] = useState<string | null>(null);
-  const [customInput, setCustomInput] = useState("");
+  currentInput,
+  offenses = []
+}: EnhancedCorrectionUIProps) => {
+  const [fieldInputs, setFieldInputs] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedOffenses, setSelectedOffenses] = useState<OffenseType[]>(offenses);
+  const [showOffenseSelector, setShowOffenseSelector] = useState(false);
 
-  // Get error source information
-  const getErrorSourceInfo = (source: "template" | "nibrs") => {
-    switch (source) {
-      case "template":
-        return {
-          title: "Template Requirements",
-          description: "Missing information for your report template",
-          icon: "📋",
-          color: "blue"
-        };
-      case "nibrs":
-        return {
-          title: "NIBRS Standards", 
-          description: "Required for federal crime reporting",
-          icon: "🏛️",
-          color: "green"
-        };
-      default:
-        return {
-          title: "Report Requirements",
-          description: "Additional information needed",
-          icon: "⚠️",
-          color: "gray"
-        };
-    }
-  };
+  // Check if this is an offense type mismatch error
+  const isOffenseTypeMismatch = correctionData.type === "offense_type_validation_error";
+  const hasOffenseValidation = !!correctionData.offenseValidation;
 
-  // Initialize corrected data
+  // Initialize field inputs WITH EXTRACTED DATA - PRIORITIZE UNIVERSAL FIELDS
   useEffect(() => {
-    if (correctionData.nibrsData) {
-      setCorrectedData(correctionData.nibrsData);
-    }
-  }, [correctionData.nibrsData]);
+    if (isOffenseTypeMismatch) return; // Don't initialize fields for offense mismatch
 
-  // Handle adding custom information to narrative
-  const handleAddCustomInfo = () => {
-    if (selectedField && customInput.trim() && onAddMissingInfo) {
-      onAddMissingInfo(`${selectedField}: ${customInput}`);
-      setSelectedField(null);
-      setCustomInput("");
+    const initialInputs: Record<string, string> = {};
+    
+    // Get all missing fields including universal ones
+    const allMissingFields = [...(correctionData.missingFields || [])];
+    
+    allMissingFields.forEach(field => {
+      // Check if we have extracted data for this field
+      const extractedValue = correctionData.extractedData?.find(
+        item => item.field === field
+      )?.value;
+      
+      // Pre-fill with extracted data if available
+      initialInputs[field] = extractedValue || "";
+    });
+    
+    setFieldInputs(initialInputs);
+  }, [correctionData.missingFields, correctionData.extractedData, isOffenseTypeMismatch]);
+
+  // Initialize selected offenses from props
+  useEffect(() => {
+    setSelectedOffenses(offenses);
+  }, [offenses]);
+
+  // Handle field input change
+  const handleFieldInputChange = (field: string, value: string) => {
+    setFieldInputs(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // Handle offenses change
+  const handleOffensesChange = (newOffenses: OffenseType[]) => {
+    setSelectedOffenses(newOffenses);
+  };
+
+  // Handle offense selection from mismatch suggestions
+  const handleOffenseSuggestionSelect = (suggestedOffense: OffenseType) => {
+    setSelectedOffenses([suggestedOffense]);
+  };
+
+  // Generate comprehensive enhanced prompt
+  const generateEnhancedPrompt = () => {
+    const originalNarrative = correctionData.originalNarrative || currentInput;
+    
+    let enhancedPrompt = originalNarrative;
+    
+    // Only add field information if we're not in offense mismatch mode
+    if (!isOffenseTypeMismatch) {
+      const newInformation: string[] = [];
+      
+      // PRIORITIZE UNIVERSAL FIELDS IN THE OUTPUT
+      Object.entries(fieldInputs)
+        .sort(([fieldA], [fieldB]) => {
+          // Sort universal fields first
+          const aIsUniversal = UNIVERSAL_REQUIRED_FIELDS.includes(fieldA);
+          const bIsUniversal = UNIVERSAL_REQUIRED_FIELDS.includes(fieldB);
+          
+          if (aIsUniversal && !bIsUniversal) return -1;
+          if (!aIsUniversal && bIsUniversal) return 1;
+          return 0;
+        })
+        .forEach(([field, value]) => {
+          if (value.trim()) {
+            let fieldLabel = getFieldLabel(field);
+            
+            newInformation.push(`${fieldLabel}: ${value.trim()}`);
+          }
+        });
+
+      if (newInformation.length > 0) {
+        enhancedPrompt += "\n\n--- SUPPLEMENTAL INVESTIGATIVE INFORMATION ---\n";
+        newInformation.forEach(info => {
+          enhancedPrompt += `• ${info}\n`;
+        });
+        
+        enhancedPrompt += "--- END SUPPLEMENTAL INFORMATION ---\n";
+      }
+    }
+
+    return enhancedPrompt;
+  };
+
+  // Handle form submission
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
+
+    // For offense type mismatch, we don't check field completion
+    if (!isOffenseTypeMismatch) {
+      // Check if mandatory universal fields are filled
+      const missingUniversalFields = correctionData.missingUniversalFields || [];
+      const unfilledUniversalFields = missingUniversalFields.filter(
+        field => !fieldInputs[field]?.trim()
+      );
+
+      if (unfilledUniversalFields.length > 0) {
+        const universalFieldNames = unfilledUniversalFields.map(field => 
+          UNIVERSAL_FIELD_DEFINITIONS[field as keyof typeof UNIVERSAL_FIELD_DEFINITIONS]?.label || field
+        ).join(', ');
+        
+        if (!confirm(`The following MANDATORY fields are still empty: ${universalFieldNames}. These are required for all police reports. Continue anyway?`)) {
+          return;
+        }
+      }
+
+      const filledFields = Object.values(fieldInputs).filter(value => value.trim()).length;
+      const totalFields = correctionData.missingFields?.length || 0;
+
+      if (filledFields === 0) {
+        if (!confirm("You haven't provided any additional information. The report may still be incomplete. Continue anyway?")) {
+          return;
+        }
+      }
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const enhancedPrompt = generateEnhancedPrompt();
+      
+      const submissionData: any = { 
+        enhancedPrompt,
+        sessionKey: correctionData.sessionKey
+      };
+
+      // Check if offenses changed
+      const offensesChanged = JSON.stringify(selectedOffenses.map(o => o.id).sort()) !== 
+                            JSON.stringify(offenses.map(o => o.id).sort());
+
+      if (offensesChanged) {
+        submissionData.newOffenses = selectedOffenses;
+      }
+      
+      await onCorrect(submissionData);
+      
+    } catch (error) {
+      console.error("❌ Error in handleSubmit:", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // Quick add options for common fields
-  const getQuickOptions = (field: string) => {
-    const options: { [key: string]: string[] } = {
-      "victim information": [
-        "Adult male victim, approximately 30 years old",
-        "Female victim, minor injuries sustained",
-        "Multiple victims involved in the incident",
-        "Business victim, property damage only"
-      ],
-      "location": [
-        "Residential address at 123 Main Street",
-        "Commercial establishment on Oak Avenue", 
-        "Public park near downtown area",
-        "Parking lot of shopping center"
-      ],
-      "offense description": [
-        "Forcible entry burglary of residence",
-        "Simple assault resulting in minor injuries",
-        "Theft of personal property from vehicle",
-        "Drug possession violation observed"
-      ],
-      "property details": [
-        "Electronic devices valued at $500",
-        "Cash amount of $250 stolen",
-        "Vehicle damaged during incident",
-        "Personal documents and identification"
-      ],
-      "incident date and time": [
-        "Occurred on today's date during daylight hours",
-        "Incident happened yesterday evening around 8 PM",
-        "Date of occurrence is within the past 24 hours",
-        "Time of incident was during business hours"
-      ]
-    };
-
-    const fieldLower = field.toLowerCase();
-    for (const [key, values] of Object.entries(options)) {
-      if (fieldLower.includes(key)) {
-        return values;
-      }
+  // Get field importance - ENHANCED TO PRIORITIZE UNIVERSAL FIELDS
+  const getFieldImportance = (field: string) => {
+    // UNIVERSAL FIELDS ARE ALWAYS CRITICAL
+    if (UNIVERSAL_REQUIRED_FIELDS.includes(field)) {
+      return { level: "critical", label: "Mandatory", color: "red" };
     }
     
-    return [
-      `Detailed information about ${field.toLowerCase()}`,
-      `Specific circumstances regarding ${field.toLowerCase()}`,
-      `Complete description of ${field.toLowerCase()}`,
-      `Additional details for ${field.toLowerCase()}`
-    ];
-  };
-
-  // Handle quick add
-  const handleQuickAdd = (field: string, option: string) => {
-    if (onAddMissingInfo) {
-      onAddMissingInfo(option);
+    if (correctionData.categorizedFields?.offenseSpecific?.critical?.includes(field)) {
+      return { level: "critical", label: "Critical", color: "red" };
     }
+    if (correctionData.categorizedFields?.offenseSpecific?.important?.includes(field)) {
+      return { level: "important", label: "Important", color: "orange" };
+    }
+    return { level: "standard", label: "Required", color: "blue" };
   };
 
-  // Handle form field changes for NIBRS data
-  const handleFieldChange = (fieldType: string, value: string) => {
-    setCorrectedData((prev: any) => {
-      const newData = { ...prev };
+  // Calculate completion progress - WEIGHT UNIVERSAL FIELDS HEAVIER
+  const completionProgress = () => {
+    if (isOffenseTypeMismatch) {
+      // For offense mismatch, progress is based on whether user selected a different offense
+      const offensesChanged = JSON.stringify(selectedOffenses.map(o => o.id).sort()) !== 
+                            JSON.stringify(offenses.map(o => o.id).sort());
+      return offensesChanged ? 100 : 50;
+    }
+
+    const filledFields = Object.values(fieldInputs).filter(value => value.trim()).length;
+    const totalFields = correctionData.missingFields?.length || 0;
+    
+    if (totalFields === 0) return 0;
+    
+    // Calculate base progress
+    let baseProgress = (filledFields / totalFields) * 100;
+    
+    // Penalize heavily for missing universal fields
+    const missingUniversalFields = correctionData.missingUniversalFields || [];
+    const unfilledUniversalFields = missingUniversalFields.filter(
+      field => !fieldInputs[field]?.trim()
+    );
+    
+    if (unfilledUniversalFields.length > 0) {
+      baseProgress = Math.max(0, baseProgress - (unfilledUniversalFields.length * 20));
+    }
+    
+    return Math.round(baseProgress);
+  };
+
+  const progress = completionProgress();
+
+  // Get display name for offenses
+  const getOffenseDisplayName = () => {
+    if (selectedOffenses.length === 0) return 'No offense selected';
+    if (selectedOffenses.length === 1) return selectedOffenses[0].name;
+    return `${selectedOffenses.length} offenses`;
+  };
+
+  // Get field label - PRIORITIZE UNIVERSAL FIELD DEFINITIONS
+  const getFieldLabel = (field: string): string => {
+    // Check universal fields first
+    if (UNIVERSAL_REQUIRED_FIELDS.includes(field)) {
+      return UNIVERSAL_FIELD_DEFINITIONS[field as keyof typeof UNIVERSAL_FIELD_DEFINITIONS]?.label || field;
+    }
+    
+    // Then check offense-specific definitions
+    for (const offense of selectedOffenses) {
+      const definition = offense.fieldDefinitions?.[field];
+      if (definition?.label) return definition.label;
+    }
+    return field;
+  };
+
+  // Get field description - PRIORITIZE UNIVERSAL FIELD DEFINITIONS
+  const getFieldDescription = (field: string): string => {
+    // Check universal fields first
+    if (UNIVERSAL_REQUIRED_FIELDS.includes(field)) {
+      return UNIVERSAL_FIELD_DEFINITIONS[field as keyof typeof UNIVERSAL_FIELD_DEFINITIONS]?.description || 'Required information for police reports';
+    }
+    
+    // Then check offense-specific definitions
+    for (const offense of selectedOffenses) {
+      const definition = offense.fieldDefinitions?.[field];
+      if (definition?.description) return definition.description;
+    }
+    return 'Required information for the selected offenses';
+  };
+
+  // Get proper examples and quick options - PRIORITIZE UNIVERSAL FIELD EXAMPLES
+  const getFieldExample = (field: string): string => {
+    // Check universal fields first
+    if (UNIVERSAL_REQUIRED_FIELDS.includes(field)) {
+      return UNIVERSAL_FIELD_DEFINITIONS[field as keyof typeof UNIVERSAL_FIELD_DEFINITIONS]?.examples || `Provide ${field}`;
+    }
+    
+    // Use the field examples from correction data
+    if (correctionData.fieldExamples?.[field]) {
+      return correctionData.fieldExamples[field];
+    }
+    
+    // Use the first offense category for context
+    const offenseCategory = selectedOffenses[0]?.category || 'general';
+    return getFieldExamples(field, offenseCategory);
+  };
+
+  const getFieldQuickOptions = (field: string): string[] => {
+    return getQuickFillOptions(field);
+  };
+
+  // Check if field is universal
+  const isUniversalField = (field: string): boolean => {
+    return UNIVERSAL_REQUIRED_FIELDS.includes(field);
+  };
+
+  // Sort fields: universal first, then by importance
+  const getSortedMissingFields = () => {
+    const missingFields = correctionData.missingFields || [];
+    
+    return [...missingFields].sort((a, b) => {
+      const aIsUniversal = isUniversalField(a);
+      const bIsUniversal = isUniversalField(b);
       
-      switch (fieldType) {
-        case "incidentDate":
-          if (!newData.administrative) newData.administrative = {};
-          newData.administrative.incidentDate = value;
-          break;
-        case "victimType":
-          if (!newData.victims || newData.victims.length === 0) {
-            newData.victims = [{}];
-          }
-          newData.victims[0].type = value;
-          break;
-        case "offenseDescription":
-          if (!newData.offenses || newData.offenses.length === 0) {
-            newData.offenses = [{}];
-          }
-          newData.offenses[0].description = value;
-          break;
-        case "propertyDescription":
-          if (!newData.properties || newData.properties.length === 0) {
-            newData.properties = [{}];
-          }
-          newData.properties[0].description = value;
-          break;
-      }
+      // Universal fields come first
+      if (aIsUniversal && !bIsUniversal) return -1;
+      if (!aIsUniversal && bIsUniversal) return 1;
       
-      return newData;
+      // Then sort by importance
+      const aImportance = getFieldImportance(a);
+      const bImportance = getFieldImportance(b);
+      
+      const importanceOrder = { critical: 0, important: 1, standard: 2 };
+      return importanceOrder[aImportance.level as keyof typeof importanceOrder] - importanceOrder[bImportance.level as keyof typeof importanceOrder];
     });
   };
 
-  // Determine if we have both template and NIBRS errors
-  const hasTemplateErrors = correctionData.source === "template" || correctionData.type === "validation_error";
-  const hasNIBRSErrors = correctionData.source === "nibrs" || correctionData.type === "nibrs_validation_error";
+  const sortedMissingFields = getSortedMissingFields();
 
+  // RENDER OFFENSE TYPE MISMATCH UI
+  if (isOffenseTypeMismatch && correctionData.offenseValidation) {
+    const offenseValidation = correctionData.offenseValidation;
+    const suggestedOffense = offenseValidation.suggestedOffense;
+    const currentOffense = offenses[0]; // Assuming single offense for mismatch
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white sticky top-0 z-10">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 rounded-lg bg-orange-100">
+                <span className="text-xl">🎯</span>
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Review Offense Classification
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  The narrative may better match a different offense type
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onCancel}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              disabled={isSubmitting}
+            >
+              <span className="text-gray-400 hover:text-gray-600 text-lg">✕</span>
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 space-y-6">
+            {/* Current vs Suggested */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Current Offense */}
+              <div className="border border-gray-300 rounded-lg p-4">
+                <h3 className="font-medium text-gray-900 mb-2">Current Selection</h3>
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-600">{currentOffense?.name}</p>
+                  <p className="text-xs text-gray-500">{currentOffense?.description}</p>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded">
+                      Confidence: {Math.round((offenseValidation.confidence || 0) * 100)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Suggested Offense */}
+              {suggestedOffense && (
+                <div className="border border-blue-300 bg-blue-50 rounded-lg p-4">
+                  <h3 className="font-medium text-blue-900 mb-2">Suggested Offense</h3>
+                  <div className="space-y-2">
+                    <p className="text-sm text-blue-800 font-medium">{suggestedOffense.name}</p>
+                    <p className="text-xs text-blue-700">{suggestedOffense.description}</p>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                        Better Match
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Reasoning */}
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <h4 className="font-medium text-yellow-800 mb-2">Analysis</h4>
+              <p className="text-sm text-yellow-700">{offenseValidation.reason}</p>
+              
+              {/* Matches & Mismatches */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                {offenseValidation.matches.length > 0 && (
+                  <div>
+                    <h5 className="text-xs font-medium text-green-700 mb-1">✓ Matching Elements</h5>
+                    <ul className="text-xs text-green-600 space-y-1">
+                      {offenseValidation.matches.slice(0, 3).map((match, index) => (
+                        <li key={index}>• {match}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {offenseValidation.mismatches.length > 0 && (
+                  <div>
+                    <h5 className="text-xs font-medium text-red-700 mb-1">✗ Mismatched Elements</h5>
+                    <ul className="text-xs text-red-600 space-y-1">
+                      {offenseValidation.mismatches.slice(0, 3).map((mismatch, index) => (
+                        <li key={index}>• {mismatch}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Alternative Offenses */}
+            {offenseValidation.alternativeOffenses.length > 0 && (
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h4 className="font-medium text-gray-900 mb-3">Other Possible Offenses</h4>
+                <div className="space-y-2">
+                  {offenseValidation.alternativeOffenses.slice(0, 3).map((offense, index) => (
+                    <button
+                      key={offense.id}
+                      onClick={() => handleOffenseSuggestionSelect(offense)}
+                      className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <p className="text-sm font-medium text-gray-900">{offense.name}</p>
+                      <p className="text-xs text-gray-500 mt-1">{offense.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-col space-y-3">
+              {suggestedOffense && (
+                <button
+                  onClick={() => handleOffenseSuggestionSelect(suggestedOffense)}
+                  className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Switch to {suggestedOffense.name}
+                </button>
+              )}
+              
+              <button
+                onClick={() => setSelectedOffenses(offenses)} // Keep current selection
+                className="w-full py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Keep Current Selection ({currentOffense?.name})
+              </button>
+
+              <button
+                onClick={() => setShowOffenseSelector(true)}
+                className="w-full py-3 border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                Choose Different Offense
+              </button>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-between items-center p-6 border-t border-gray-200 bg-white">
+            <div className="text-sm text-gray-500">
+              {selectedOffenses[0]?.id !== offenses[0]?.id ? (
+                <span className="text-green-600 font-medium">Offense changed to {selectedOffenses[0]?.name}</span>
+              ) : (
+                "Select an offense to continue"
+              )}
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={onCancel}
+                disabled={isSubmitting}
+                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={isSubmitting || selectedOffenses.length === 0}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed flex items-center space-x-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Continuing...</span>
+                  </>
+                ) : (
+                  <span>Continue with {selectedOffenses[0]?.name}</span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Offense Selector Modal */}
+          {showOffenseSelector && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+                <div className="p-6 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold">Select Offense Type</h3>
+                </div>
+                <div className="p-6">
+                  <MultiOffenseSelector
+                    onOffensesSelect={(newOffenses) => {
+                      setSelectedOffenses(newOffenses);
+                      setShowOffenseSelector(false);
+                    }}
+                    onBack={() => setShowOffenseSelector(false)}
+                    initialSelectedOffenses={selectedOffenses}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // RENDER STANDARD FIELD COMPLETION UI (your existing code)
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white sticky top-0 z-10">
           <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-lg bg-blue-100">
+            <div className="p-2 rounded-lg bg-orange-100">
               <span className="text-xl">⚠️</span>
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900">
-                Report Information Needed
+                Complete Your Report
               </h2>
               <p className="text-sm text-gray-500 mt-1">
-                Please provide the missing details to complete your reports
+                Add missing information for {getOffenseDisplayName()}
+                {correctionData.missingUniversalFields && correctionData.missingUniversalFields.length > 0 && (
+                  <span className="text-red-600 font-medium ml-2">
+                    • {correctionData.missingUniversalFields.length} mandatory field(s) required
+                  </span>
+                )}
               </p>
             </div>
           </div>
           <button
             onClick={onCancel}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            disabled={isSubmitting}
           >
-            <span className="text-gray-400 hover:text-gray-600">✕</span>
+            <span className="text-gray-400 hover:text-gray-600 text-lg">✕</span>
           </button>
         </div>
 
-        {/* Main Content */}
-        <div className="p-6 space-y-6">
-          {/* Error Summary */}
-          <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+        {/* Progress Bar */}
+        <div className="px-6 pt-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">
+              Completion Progress
+            </span>
+            <span className="text-sm text-gray-500">
+              {progress}% ({Object.values(fieldInputs).filter(v => v.trim()).length}/{correctionData.missingFields?.length || 0})
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className={`h-2 rounded-full transition-all duration-300 ${
+                progress < 50 ? 'bg-red-500' :
+                progress < 80 ? 'bg-orange-500' : 'bg-green-500'
+              }`}
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+        </div>
+
+        {/* Universal Fields Warning */}
+        {correctionData.missingUniversalFields && correctionData.missingUniversalFields.length > 0 && (
+          <div className="p-4 bg-red-50 border border-red-200 mx-6 mt-4 rounded-lg">
             <div className="flex items-start space-x-2">
-              <span className="text-orange-500 mt-0.5">📝</span>
+              <span className="text-red-500 mt-0.5">🔴</span>
               <div>
-                <h4 className="font-medium text-orange-800">Summary</h4>
-                <p className="text-orange-700 text-sm mt-1">{correctionData.error}</p>
+                <p className="text-sm text-red-800 font-medium">
+                  Mandatory Fields Required
+                </p>
+                <p className="text-sm text-red-700 mt-1">
+                  Date, time, and location are required for all police reports. Please provide these details below.
+                </p>
               </div>
             </div>
           </div>
+        )}
 
-          {/* Template Errors Section */}
-          {hasTemplateErrors && (
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="bg-blue-50 px-4 py-3 border-b border-blue-200">
-                <div className="flex items-center space-x-2">
-                  <span className="text-blue-600">📋</span>
-                  <h3 className="font-semibold text-blue-800">Narrative Report Requirements</h3>
-                </div>
-                <p className="text-blue-700 text-sm mt-1">
-                  These details are needed for your narrative report template
-                </p>
-              </div>
-              
-              <div className="p-4 space-y-4">
-                {correctionData.missingFields?.map((field, index) => (
-                  <div key={index} className="p-4 bg-white border border-gray-200 rounded-lg">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h4 className="font-medium text-gray-900">{field}</h4>
-                        <p className="text-gray-500 text-sm mt-1">
-                          Required for complete narrative report
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => setSelectedField(field)}
-                        className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
-                      >
-                        Add Information
-                      </button>
+        {/* General Guidance */}
+        <div className="p-4 bg-blue-50 border border-blue-200 mx-6 mt-4 rounded-lg">
+          <div className="flex items-start space-x-2">
+            <span className="text-blue-500 mt-0.5">💡</span>
+            <div>
+              <p className="text-sm text-blue-800 font-medium">
+                Fill in all missing fields below. All information will be combined with your original report.
+              </p>
+              <p className="text-sm text-blue-700 mt-1">
+                <strong>Mandatory fields</strong> (in red) must be completed for report generation.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Missing Fields Form */}
+        <div className="p-6 space-y-6">
+          {sortedMissingFields.map((field, index) => {
+            const importance = getFieldImportance(field);
+            const example = getFieldExample(field);
+            const quickOptions = getFieldQuickOptions(field);
+            const extractedValue = correctionData.extractedData?.find(item => item.field === field)?.value;
+            const isUniversal = isUniversalField(field);
+
+            return (
+              <div 
+                key={index} 
+                className={`p-4 bg-white border rounded-lg shadow-sm ${
+                  isUniversal ? 'border-red-300 bg-red-50' : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2 mb-2">
+                      {isUniversal && (
+                        <span className="text-red-500 text-sm">🔴</span>
+                      )}
+                      <span className={`inline-block w-2 h-2 rounded-full ${
+                        importance.color === 'red' ? 'bg-red-500' :
+                        importance.color === 'orange' ? 'bg-orange-500' : 'bg-blue-500'
+                      }`}></span>
+                      <h4 className={`font-medium ${
+                        isUniversal ? 'text-red-900' : 'text-gray-900'
+                      }`}>
+                        {getFieldLabel(field)}
+                        {isUniversal && (
+                          <span className="ml-2 text-xs text-red-600">(Mandatory)</span>
+                        )}
+                      </h4>
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        importance.color === 'red' ? 'bg-red-100 text-red-800' :
+                        importance.color === 'orange' ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {importance.label}
+                      </span>
+                    </div>
+                    <p className={`text-sm mb-2 ${
+                      isUniversal ? 'text-red-700' : 'text-gray-600'
+                    }`}>
+                      {getFieldDescription(field)}
+                    </p>
+                    
+                    {/* Example */}
+                    <div className={`p-3 rounded border mb-3 ${
+                      isUniversal ? 'bg-red-100 border-red-200' : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      <p className={`text-sm ${
+                        isUniversal ? 'text-red-800' : 'text-gray-700'
+                      }`}>
+                        <strong>Example:</strong> {example}
+                      </p>
                     </div>
 
-                    {/* Quick Add Options */}
+                    {/* Text Input */}
+                    <textarea
+                      value={fieldInputs[field] || ""}
+                      onChange={(e) => handleFieldInputChange(field, e.target.value)}
+                      placeholder={`Describe ${getFieldLabel(field).toLowerCase()} in detail...`}
+                      className={`w-full h-24 p-3 border rounded text-sm resize-none focus:ring-2 focus:border-blue-500 ${
+                        isUniversal 
+                          ? 'border-red-300 focus:ring-red-500 bg-white' 
+                          : 'border-gray-300 focus:ring-blue-500'
+                      }`}
+                    />
+
+                    {/* Quick Fill Options */}
                     <div className="mt-3">
-                      <p className="text-sm text-gray-600 mb-2">Quick options:</p>
+                      <p className="text-xs text-gray-500 mb-2">Quick options:</p>
                       <div className="flex flex-wrap gap-2">
-                        {getQuickOptions(field).map((option, optionIndex) => (
+                        {quickOptions.map((option, optionIndex) => (
                           <button
                             key={optionIndex}
-                            onClick={() => handleQuickAdd(field, option)}
-                            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded transition-colors"
+                            onClick={() => handleFieldInputChange(field, option)}
+                            className="px-3 py-1 bg-gray-100 text-gray-700 text-xs rounded hover:bg-gray-200 transition-colors border border-gray-300"
                           >
                             {option}
                           </button>
@@ -262,191 +778,52 @@ const UnifiedCorrectionUI = ({
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* NIBRS Errors Section */}
-          {hasNIBRSErrors && (
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="bg-green-50 px-4 py-3 border-b border-green-200">
-                <div className="flex items-center space-x-2">
-                  <span className="text-green-600">🏛️</span>
-                  <h3 className="font-semibold text-green-800">NIBRS Standards</h3>
-                </div>
-                <p className="text-green-700 text-sm mt-1">
-                  Required for federal crime reporting compliance
-                </p>
-              </div>
-              
-              <div className="p-4 space-y-4">
-                {correctionData.missingFields?.map((field, index) => (
-                  <div key={index} className="p-4 bg-white border border-gray-200 rounded-lg">
-                    <h4 className="font-medium text-gray-900 mb-3">{field}</h4>
-                    
-                    {/* NIBRS Form Fields */}
-                    {field.toLowerCase().includes("date") && (
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-2">Incident Date</label>
-                        <input
-                          type="date"
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                          value={correctedData.administrative?.incidentDate || ""}
-                          onChange={(e) => handleFieldChange("incidentDate", e.target.value)}
-                        />
-                      </div>
-                    )}
-                    
-                    {field.toLowerCase().includes("victim") && (
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-2">Victim Type</label>
-                        <select
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                          value={correctedData.victims?.[0]?.type || ""}
-                          onChange={(e) => handleFieldChange("victimType", e.target.value)}
-                        >
-                          <option value="">Select victim type</option>
-                          <option value="I">👤 Individual (assaults, thefts, burglaries)</option>
-                          <option value="S">🏛️ Society/Public (drugs, weapons, DUI)</option>
-                          <option value="B">🏢 Business (commercial crimes)</option>
-                        </select>
-                        <p className="text-xs text-gray-500 mt-2">
-                          💡 Use "Society/Public" for victimless offenses like drug violations
-                        </p>
-                      </div>
-                    )}
-                    
-                    {field.toLowerCase().includes("offense") && (
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-2">Offense Description</label>
-                        <input
-                          type="text"
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                          placeholder="e.g., Burglary, Assault, Theft"
-                          value={correctedData.offenses?.[0]?.description || ""}
-                          onChange={(e) => handleFieldChange("offenseDescription", e.target.value)}
-                        />
-                      </div>
-                    )}
-                    
-                    {field.toLowerCase().includes("property") && (
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-2">Property Description</label>
-                        <input
-                          type="text"
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                          placeholder="e.g., Stolen laptop, Damaged vehicle"
-                          value={correctedData.properties?.[0]?.description || ""}
-                          onChange={(e) => handleFieldChange("propertyDescription", e.target.value)}
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Suggestions Section */}
-          {correctionData.suggestions && correctionData.suggestions.length > 0 && (
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="bg-purple-50 px-4 py-3 border-b border-purple-200">
-                <div className="flex items-center space-x-2">
-                  <span className="text-purple-600">💡</span>
-                  <h3 className="font-semibold text-purple-800">Suggestions</h3>
                 </div>
               </div>
-              
-              <div className="p-4">
-                <div className="space-y-3">
-                  {correctionData.suggestions.map((suggestion, index) => (
-                    <div key={index} className="flex items-start space-x-3 p-3 bg-purple-50 rounded">
-                      <span className="text-purple-500 mt-0.5">•</span>
-                      <p className="text-purple-800 text-sm">{suggestion}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Help Section */}
-          <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-            <h4 className="font-medium text-gray-800 mb-2">💡 How to proceed:</h4>
-            <ul className="text-gray-600 text-sm space-y-1">
-              {hasTemplateErrors && (
-                <li>• Use <strong>"Add Information"</strong> to add details to your narrative</li>
-              )}
-              {hasNIBRSErrors && (
-                <li>• Fill in the <strong>NIBRS form fields</strong> for federal reporting</li>
-              )}
-              <li>• Click <strong>"Submit Corrections"</strong> when all information is provided</li>
-            </ul>
-          </div>
+            );
+          })}
         </div>
 
         {/* Footer */}
-        <div className="flex justify-between items-center p-6 border-t border-gray-200 bg-gray-50">
+        <div className="flex justify-between items-center p-6 border-t border-gray-200 bg-white sticky bottom-0">
           <div className="text-sm text-gray-500">
-            {correctionData.missingFields?.length || 0} fields need attention
+            {progress === 100 ? (
+              <span className="text-green-600 font-medium">All fields completed! Ready to generate.</span>
+            ) : correctionData.missingUniversalFields && correctionData.missingUniversalFields.length > 0 ? (
+              <span className="text-red-600 font-medium">
+                Mandatory fields required: {correctionData.missingUniversalFields.length} remaining
+              </span>
+            ) : (
+              "Fill in missing information above."
+            )}
           </div>
           <div className="flex space-x-3">
             <button
               onClick={onCancel}
-              className="px-4 py-2 border border-gray-300 rounded text-gray-600 hover:bg-gray-100 transition-colors"
+              disabled={isSubmitting}
+              className="px-6 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
             <button
-              onClick={() => onCorrect(correctedData)}
-              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed flex items-center space-x-2"
             >
-              Submit Corrections
+              {isSubmitting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Generating...</span>
+                </>
+              ) : (
+                <span>Generate Complete Report</span>
+              )}
             </button>
           </div>
         </div>
       </div>
-
-      {/* Add Information Modal */}
-      {selectedField && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="font-semibold text-gray-900 mb-2">Add Information</h3>
-            <p className="text-gray-600 text-sm mb-4">
-              Add details about: <strong>{selectedField}</strong>
-            </p>
-            
-            <textarea
-              value={customInput}
-              onChange={(e) => setCustomInput(e.target.value)}
-              placeholder={`Describe ${selectedField.toLowerCase()}...`}
-              className="w-full h-32 p-3 border border-gray-300 rounded text-sm resize-none"
-            />
-            
-            <div className="flex justify-end space-x-3 mt-4">
-              <button
-                onClick={() => {
-                  setSelectedField(null);
-                  setCustomInput("");
-                }}
-                className="px-4 py-2 border border-gray-300 rounded text-gray-600 hover:bg-gray-100 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddCustomInfo}
-                disabled={!customInput.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                Add to Narrative
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
 
-export default UnifiedCorrectionUI;
+export default CorrectionUI;

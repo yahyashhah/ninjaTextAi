@@ -8,15 +8,35 @@ interface HeaderSectionProps {
   reportName: string;
   reportType: string;
   setShowHelpModal: (show: boolean) => void;
+  showBackButton?: boolean; // Added
+  onBack?: () => void; // Added
+  currentStep?: string; // Added
+  selectedOffenses?: any; // Added
+  selectedTemplate?: any; // Added
 }
 
-const Header = ({ router, reportIcon, reportName, setShowHelpModal }: HeaderSectionProps) => {
+const Header = ({ 
+  router, 
+  reportIcon, 
+  reportName, 
+  setShowHelpModal, 
+  showBackButton = false, // Added with default
+  onBack = () => {} // Added with default
+}: HeaderSectionProps) => {
+  const handleBackClick = () => {
+    if (showBackButton && onBack) {
+      onBack();
+    } else {
+      router.back();
+    }
+  };
+
   return (
     <div className="w-full flex justify-between items-center p-4 px-6 bg-white shadow-sm border-b">
       <div className="flex items-center space-x-4">
         <ArrowLeft
           className="cursor-pointer text-gray-600 hover:text-gray-900 transition-colors"
-          onClick={() => router.back()}
+          onClick={handleBackClick} // Updated to use new function
           size={20}
         />
         <div className="flex items-center space-x-2">

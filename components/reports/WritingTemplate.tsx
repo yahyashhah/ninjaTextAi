@@ -4,14 +4,16 @@ import { ChevronDown, ChevronUp, HelpCircle, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { OffenseType } from "@/constants/offences";
 
 interface WritingTemplateProps {
   isVisible: boolean;
   onInsertSnippet: (snippet: string) => void;
   onFieldHelp: (fieldName: string, options: string[]) => void;
+  offenseTypes?: OffenseType[] | null; // Added
 }
 
-const WritingTemplate = ({ isVisible, onInsertSnippet, onFieldHelp }: WritingTemplateProps) => {
+const WritingTemplate = ({ isVisible, onInsertSnippet, onFieldHelp,  }: WritingTemplateProps) => {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["incident", "victim", "offense"]));
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null);
   const [currentDate] = useState(new Date().toLocaleDateString());
