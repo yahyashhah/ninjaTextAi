@@ -801,6 +801,7 @@ const BaseReport = ({
           <MultiOffenseSelector
             onOffensesSelect={handleOffensesSelect}
             onBack={handleBack}
+            initialSelectedOffenses={selectedOffenses}
           />
         )}
 

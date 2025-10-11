@@ -9,6 +9,7 @@ import { useState } from "react";
 interface SimpleOffenseSelectorProps {
   onOffensesSelect: (offenses: OffenseType[]) => void;
   onBack: () => void;
+  initialSelectedOffenses: OffenseType[];
 }
 
 const SimpleOffenseSelector = ({ onOffensesSelect, onBack }: SimpleOffenseSelectorProps) => {
