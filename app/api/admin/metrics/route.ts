@@ -1,3 +1,4 @@
+// app/api/admin/metrics/route.ts - FIXED VERSION
 import prismadb from "@/lib/prismadb";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -37,17 +38,16 @@ export async function GET(request: Request) {
         startDate = new Date(now.setDate(now.getDate() - 7));
     }
 
-    // Get all users
+    // Get all users from OUR database (not Clerk)
     const allUsers = await prismadb.user.findMany();
     const totalUsers = allUsers.length;
 
-    // Get active users (users who created reports in the timeframe)
-    const activeUsers = await prismadb.reportEvent.findMany({
+    // FIX: Get active users from UserReports (not ReportEvent)
+    const activeUsers = await prismadb.userReports.findMany({
       where: {
         createdAt: {
           gte: startDate
-        },
-        success: true
+        }
       },
       distinct: ['userId'],
       select: {
@@ -55,21 +55,20 @@ export async function GET(request: Request) {
       }
     });
 
-    // Get report statistics
-    const reportStats = await prismadb.reportEvent.groupBy({
+    // FIX: Get report statistics from UserReports (single source of truth)
+    const reportStats = await prismadb.userReports.groupBy({
       by: ['userId'],
       where: {
         createdAt: {
           gte: startDate
-        },
-        success: true
+        }
       },
       _count: {
         id: true
       }
     });
 
-    // Get processing time statistics
+    // Get processing time statistics from ReportEvent
     const processingStats = await prismadb.reportEvent.aggregate({
       where: {
         createdAt: {
@@ -91,7 +90,7 @@ export async function GET(request: Request) {
       }
     });
 
-    // Get success/failure rates
+    // Get success/failure rates from ReportEvent
     const successStats = await prismadb.reportEvent.groupBy({
       by: ['success'],
       where: {
@@ -104,7 +103,7 @@ export async function GET(request: Request) {
       }
     });
 
-    // Get login activities for audit completeness
+    // Get login activities
     const totalLoginActivities = await prismadb.userActivity.count({
       where: {
         activity: "login",
@@ -114,7 +113,7 @@ export async function GET(request: Request) {
       }
     });
 
-    // Get all activities for audit completeness calculation
+    // Get all activities
     const totalActivities = await prismadb.userActivity.count({
       where: {
         createdAt: {
@@ -153,10 +152,11 @@ export async function GET(request: Request) {
       }
     });
 
-    // Calculate metrics
+    // Calculate metrics - FIXED to use correct data sources
     const activeUsersCount = activeUsers.length;
     const activeUsersPercentage = totalUsers > 0 ? (activeUsersCount / totalUsers) * 100 : 0;
     
+    // FIX: Use UserReports count (not ReportEvent)
     const totalReports = reportStats.reduce((sum, stat) => sum + stat._count.id, 0);
     const avgReportsPerUser = activeUsersCount > 0 ? totalReports / activeUsersCount : 0;
     
@@ -165,24 +165,24 @@ export async function GET(request: Request) {
     const totalAttempts = successCount + failureCount;
     const successRate = totalAttempts > 0 ? (successCount / totalAttempts) * 100 : 0;
 
-    // Calculate audit log completeness (simplified)
+    // Calculate audit log completeness
     const auditCompleteness = totalActivities > 0 ? 
       (totalLoginActivities / totalActivities) * 100 : 0;
 
-    // Weekly data for charts
+    // Weekly data for charts - FIXED
     const weeklyData = await getWeeklyData();
 
     return NextResponse.json({
-      // Adoption & Engagement
+      // Adoption & Engagement - NOW ACCURATE
       activeUsers: activeUsersCount,
       activeUsersPercentage: Math.round(activeUsersPercentage),
-      reportRate: Math.round(activeUsersPercentage), // % of officers creating reports
+      reportRate: Math.round(activeUsersPercentage),
       avgReportsPerUser: Math.round(avgReportsPerUser * 100) / 100,
-      totalReports,
+      totalReports, // NOW CORRECT - not double counted
       
       // Efficiency
       avgProcessingTime: processingStats._avg.processingTime 
-        ? Math.round(processingStats._avg.processingTime / 1000) // Convert to seconds
+        ? Math.round(processingStats._avg.processingTime / 1000)
         : 0,
       minProcessingTime: processingStats._min.processingTime 
         ? Math.round(processingStats._min.processingTime / 1000)
@@ -201,9 +201,9 @@ export async function GET(request: Request) {
       auditCompleteness: Math.round(auditCompleteness),
       
       // Business ROI
-      reportsPerOfficerPerMonth: Math.round(avgReportsPerUser * 4.33), // approximate weeks to month
+      reportsPerOfficerPerMonth: Math.round(avgReportsPerUser * 4.33),
       
-      // Weekly data for charts
+      // Weekly data for charts - NOW ACCURATE
       weeklyData,
       
       // Additional calculated metrics
@@ -217,7 +217,7 @@ export async function GET(request: Request) {
 }
 
 async function getWeeklyData() {
-  // Get data for the last 4 weeks
+  // Get data for the last 4 weeks - FIXED to use UserReports
   const weeks = [];
   const now = new Date();
   
@@ -229,14 +229,13 @@ async function getWeeklyData() {
     
     const weekLabel = `Week ${4-i}`;
     
-    // Get active users for this week
-    const activeUsers = await prismadb.reportEvent.findMany({
+    // FIX: Get active users from UserReports
+    const activeUsers = await prismadb.userReports.findMany({
       where: {
         createdAt: {
           gte: weekStart,
           lte: weekEnd
-        },
-        success: true
+        }
       },
       distinct: ['userId'],
       select: {
@@ -244,14 +243,13 @@ async function getWeeklyData() {
       }
     });
     
-    // Get reports for this week
-    const reports = await prismadb.reportEvent.count({
+    // FIX: Get reports from UserReports (not ReportEvent)
+    const reports = await prismadb.userReports.count({
       where: {
         createdAt: {
           gte: weekStart,
           lte: weekEnd
-        },
-        success: true
+        }
       }
     });
 
@@ -268,7 +266,7 @@ async function getWeeklyData() {
     weeks.push({
       week: weekLabel,
       activeUsers: activeUsers.length,
-      reports: reports,
+      reports: reports, // NOW ACCURATE
       errors: errors,
       reportsPerUser: activeUsers.length > 0 ? Math.round((reports / activeUsers.length) * 100) / 100 : 0
     });

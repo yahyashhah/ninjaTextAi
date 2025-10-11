@@ -1,4 +1,4 @@
-// components/reports/sub-components/EnhancedCorrectionUI.tsx - UPDATED WITH OFFENSE TYPE MISMATCH
+// components/reports/sub-components/EnhancedCorrectionUI.tsx - FIXED VERSION
 import { useState, useEffect } from "react";
 import { OffenseType, GROUP_A_OFFENSES } from "@/constants/offences";
 import { getFieldExamples, getQuickFillOptions } from "@/lib/field-utils";
@@ -121,6 +121,7 @@ const CorrectionUI = ({
   // Check if this is an offense type mismatch error
   const isOffenseTypeMismatch = correctionData.type === "offense_type_validation_error";
   const hasOffenseValidation = !!correctionData.offenseValidation;
+  const isMultipleOffenses = offenses.length > 1;
 
   // Initialize field inputs WITH EXTRACTED DATA - PRIORITIZE UNIVERSAL FIELDS
   useEffect(() => {
@@ -209,13 +210,13 @@ const CorrectionUI = ({
     return enhancedPrompt;
   };
 
-  // Handle form submission
+  // FIXED: Handle form submission for multiple offenses
   const handleSubmit = async () => {
     if (isSubmitting) return;
 
     // For offense type mismatch, we don't check field completion
     if (!isOffenseTypeMismatch) {
-      // Check if mandatory universal fields are filled
+      // Check if mandatory universal fields are filled - ONLY CHECK UNIVERSAL FIELDS
       const missingUniversalFields = correctionData.missingUniversalFields || [];
       const unfilledUniversalFields = missingUniversalFields.filter(
         field => !fieldInputs[field]?.trim()
@@ -231,9 +232,10 @@ const CorrectionUI = ({
         }
       }
 
+      // For multiple offenses, don't require ALL fields to be filled
+      // Just check if at least some information was provided
       const filledFields = Object.values(fieldInputs).filter(value => value.trim()).length;
-      const totalFields = correctionData.missingFields?.length || 0;
-
+      
       if (filledFields === 0) {
         if (!confirm("You haven't provided any additional information. The report may still be incomplete. Continue anyway?")) {
           return;
@@ -284,7 +286,7 @@ const CorrectionUI = ({
     return { level: "standard", label: "Required", color: "blue" };
   };
 
-  // Calculate completion progress - WEIGHT UNIVERSAL FIELDS HEAVIER
+  // FIXED: Calculate completion progress for multiple offenses
   const completionProgress = () => {
     if (isOffenseTypeMismatch) {
       // For offense mismatch, progress is based on whether user selected a different offense
@@ -301,14 +303,21 @@ const CorrectionUI = ({
     // Calculate base progress
     let baseProgress = (filledFields / totalFields) * 100;
     
-    // Penalize heavily for missing universal fields
+    // For multiple offenses, don't penalize as heavily for missing fields
+    // since not all fields may be applicable to all offenses
+    if (isMultipleOffenses) {
+      // For multiple offenses, be more lenient - 50% is acceptable
+      baseProgress = Math.min(100, baseProgress * 1.5);
+    }
+    
+    // Still penalize for missing universal fields
     const missingUniversalFields = correctionData.missingUniversalFields || [];
     const unfilledUniversalFields = missingUniversalFields.filter(
       field => !fieldInputs[field]?.trim()
     );
     
     if (unfilledUniversalFields.length > 0) {
-      baseProgress = Math.max(0, baseProgress - (unfilledUniversalFields.length * 20));
+      baseProgress = Math.max(0, baseProgress - (unfilledUniversalFields.length * 15));
     }
     
     return Math.round(baseProgress);
@@ -606,7 +615,7 @@ const CorrectionUI = ({
     );
   }
 
-  // RENDER STANDARD FIELD COMPLETION UI (your existing code)
+  // RENDER STANDARD FIELD COMPLETION UI
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
@@ -625,6 +634,11 @@ const CorrectionUI = ({
                 {correctionData.missingUniversalFields && correctionData.missingUniversalFields.length > 0 && (
                   <span className="text-red-600 font-medium ml-2">
                     • {correctionData.missingUniversalFields.length} mandatory field(s) required
+                  </span>
+                )}
+                {isMultipleOffenses && (
+                  <span className="text-blue-600 font-medium ml-2">
+                    • Multiple offenses selected
                   </span>
                 )}
               </p>
@@ -647,6 +661,7 @@ const CorrectionUI = ({
             </span>
             <span className="text-sm text-gray-500">
               {progress}% ({Object.values(fieldInputs).filter(v => v.trim()).length}/{correctionData.missingFields?.length || 0})
+              {isMultipleOffenses && " (Multiple offenses - more lenient)"}
             </span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2">
@@ -677,6 +692,24 @@ const CorrectionUI = ({
           </div>
         )}
 
+        {/* Multiple Offenses Guidance */}
+        {isMultipleOffenses && (
+          <div className="p-4 bg-blue-50 border border-blue-200 mx-6 mt-4 rounded-lg">
+            <div className="flex items-start space-x-2">
+              <span className="text-blue-500 mt-0.5">ℹ️</span>
+              <div>
+                <p className="text-sm text-blue-800 font-medium">
+                  Multiple Offenses Selected
+                </p>
+                <p className="text-sm text-blue-700 mt-1">
+                  You have selected {offenses.length} offenses. Not all fields may apply to every offense. 
+                  Focus on providing the most critical information first.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* General Guidance */}
         <div className="p-4 bg-blue-50 border border-blue-200 mx-6 mt-4 rounded-lg">
           <div className="flex items-start space-x-2">
@@ -687,6 +720,7 @@ const CorrectionUI = ({
               </p>
               <p className="text-sm text-blue-700 mt-1">
                 <strong>Mandatory fields</strong> (in red) must be completed for report generation.
+                {isMultipleOffenses && " For multiple offenses, focus on the most critical information first."}
               </p>
             </div>
           </div>
@@ -792,6 +826,10 @@ const CorrectionUI = ({
             ) : correctionData.missingUniversalFields && correctionData.missingUniversalFields.length > 0 ? (
               <span className="text-red-600 font-medium">
                 Mandatory fields required: {correctionData.missingUniversalFields.length} remaining
+              </span>
+            ) : isMultipleOffenses ? (
+              <span className="text-blue-600 font-medium">
+                Multiple offenses: {progress}% complete - focus on critical information
               </span>
             ) : (
               "Fill in missing information above."

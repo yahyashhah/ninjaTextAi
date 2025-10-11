@@ -1,4 +1,4 @@
-// lib/unified-offense-validator.ts
+// lib/unified-offense-validator.ts - FIXED VERSION
 import { GROUP_A_OFFENSES, OffenseType } from "@/constants/offences";
 import { getTemplateByOffense } from "@/constants/offnce-templates";
 import { getFieldExamples, enhanceCategorizedFields, calculateValidationConfidence } from './field-utils';
@@ -137,6 +137,12 @@ ${GROUP_A_OFFENSES
 3. DATA EXTRACTION: Extract values for all offense-specific required fields
 4. COMPLETENESS: Determine if report has all mandatory universal fields + offense-specific fields
 
+*** IMPORTANT FOR MULTI-OFFENSE SCENARIOS ***
+- For universal fields (date, time, location): mark as present if found ANYWHERE in narrative
+- For offense-specific fields: only validate against THIS specific offense
+- Report isComplete as FALSE if ANY universal fields are missing
+- Report isComplete as FALSE if ANY offense-specific required fields are missing
+
 *** RESPONSE FORMAT - JSON ONLY ***
 {
   "offenseValidation": {
@@ -150,7 +156,7 @@ ${GROUP_A_OFFENSES
   "dataExtraction": {
     "isComplete": boolean,
     "missingFields": ["array_of_missing_offense_specific_fields"],
-    "presentFields": ["array_of_present_fields"],
+    "presentFields": ["array_of_all_present_fields_including_universal"],
     "extractedData": [
       {
         "field": "field_name",
@@ -169,10 +175,11 @@ ${GROUP_A_OFFENSES
   }
 }
 
-IMPORTANT: 
+CRITICAL: 
 - If any universal fields are missing, isComplete MUST be false
-- Confidence should be low (<=0.3) if mandatory fields are missing
-- Only suggest alternative offenses if confidence < 0.7
+- presentFields should include ALL fields found (both universal and offense-specific)
+- missingFields should include ONLY offense-specific missing fields
+- missingUniversalFields should include ONLY universal fields that are missing
 `;
 
   try {
@@ -212,7 +219,7 @@ IMPORTANT:
     const extraction = result.dataExtraction || {};
     const missingUniversal = extraction.missingUniversalFields || [];
     
-    // Combine all missing fields
+    // Combine all missing fields (offense-specific + universal)
     const allMissingFields = Array.from(new Set([
       ...(extraction.missingFields || []),
       ...missingUniversal
