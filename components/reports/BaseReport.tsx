@@ -1,4 +1,4 @@
-// components/reports/BaseReport.tsx - SIMPLIFIED WITHOUT TEMPLATE SELECTION
+// components/reports/BaseReport.tsx - FIXED VERSION
 "use client";
 
 import * as z from "zod";
@@ -15,12 +15,10 @@ import Header from "./Header";
 import ReportOutput from "./ReportOutput";
 import RecordingControls from "./RecordingControls";
 import PromptInput from "./PromptInput";
-import DictationTemplate from "./DictationTemplate";
-import WritingTemplate from "./WritingTemplate";
 import ReviewModal from "./ReviewModal";
-import MultiOffenseSelector from "./OffenceSelector";
-import { OffenseType } from "@/constants/offences";
+import { OffenseType, GROUP_A_OFFENSES } from "@/constants/offences";
 import CorrectionUI from "./CorrectionUI";
+import { ChevronDown, Search, X } from "lucide-react";
 
 export type Template = {
   id: string;
@@ -90,8 +88,8 @@ interface CorrectionData {
   };
 }
 
-// SIMPLIFIED: Only two steps now
-type WorkflowStep = 'offense-selection' | 'report-creation' | 'report-complete';
+// SIMPLIFIED: Single page workflow
+type WorkflowStep = 'input' | 'report-complete';
 
 const BaseReport = ({
   reportType,
@@ -107,11 +105,13 @@ const BaseReport = ({
   const { toast } = useToast();
   const { startListening, stopListening, transcript } = useVoiceToText();
   
-  // SIMPLIFIED: Start with offense selection directly
-  const [workflowStep, setWorkflowStep] = useState<WorkflowStep>('offense-selection');
+  // SIMPLIFIED: Single page approach
+  const [workflowStep, setWorkflowStep] = useState<WorkflowStep>('input');
   const [selectedOffenses, setSelectedOffenses] = useState<OffenseType[]>([]);
+  const [showOffenseDropdown, setShowOffenseDropdown] = useState(false);
+  const [offenseSearch, setOffenseSearch] = useState("");
   
-  // Existing states (removed template-related states)
+  // Existing states
   const [prompt, setPrompt] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -124,24 +124,12 @@ const BaseReport = ({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [correctionData, setCorrectionData] = useState<CorrectionData | null>(null);
-  const [showDictationTemplate, setShowDictationTemplate] = useState(false);
   const [inputMode, setInputMode] = useState<'typing' | 'recording' | 'ready-to-record'>('ready-to-record');
-  const [reviewModal, setReviewModal] = useState<{
-    isOpen: boolean; 
-    fieldName: string; 
-    options: string[];
-    currentSegment?: string;
-    currentField?: string;
-  }>({
-    isOpen: false,
-    fieldName: "",
-    options: []
-  });
-  const [completedSections, setCompletedSections] = useState<Set<string>>(new Set());
 
   const timerRef = useRef<NodeJS.Timeout>();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastTranscriptRef = useRef("");
+  const offenseDropdownRef = useRef<HTMLDivElement>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -150,56 +138,34 @@ const BaseReport = ({
     },
   });
 
-  // SIMPLIFIED: Just set the offenses array and go to report creation
-  const handleOffensesSelect = (offenses: OffenseType[]) => {
-    setSelectedOffenses(offenses);
-    setWorkflowStep('report-creation');
+  // Filter offenses based on search
+  const filteredOffenses = GROUP_A_OFFENSES.filter(offense => {
+    const matchesSearch = offense.name.toLowerCase().includes(offenseSearch.toLowerCase()) ||
+                         offense.code.includes(offenseSearch);
+    return matchesSearch;
+  });
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (offenseDropdownRef.current && !offenseDropdownRef.current.contains(event.target as Node)) {
+        setShowOffenseDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Handle offense selection
+  const handleOffenseSelect = (offense: OffenseType) => {
+    const isSelected = selectedOffenses.find(o => o.id === offense.id);
     
-    toast({
-      title: offenses.length === 1 ? "Offense Selected" : "Offenses Selected",
-      description: `${offenses.length} offense${offenses.length === 1 ? '' : 's'} loaded. Please provide the incident details.`,
-      variant: "default",
-    });
-  };
-
-  // Handle back navigation in workflow
-  const handleBack = () => {
-    if (workflowStep === 'report-creation') {
-      setWorkflowStep('offense-selection');
-      setSelectedOffenses([]);
-      setPrompt("");
-      setNarrativeMessage("");
+    if (isSelected) {
+      setSelectedOffenses(prev => prev.filter(o => o.id !== offense.id));
+    } else {
+      setSelectedOffenses(prev => [...prev, offense]);
     }
-  };
-
-  // Field options for DictationTemplate buttons
-  const fieldOptions = {
-    incidentType: ["Burglary", "Assault", "Theft", "Robbery", "Vandalism", "Domestic Violence", "Drug Offense", "Traffic Incident", "Other"],
-    victimGender: ["Male", "Female", "Unknown"],
-    race: ["White", "Black", "Asian", "Native American", "Pacific Islander", "Unknown"],
-    ethnicity: ["Hispanic/Latino", "Non-Hispanic", "Unknown"],
-    relationship: ["Stranger", "Acquaintance", "Family Member", "Spouse/Partner", "Neighbor", "Coworker", "Unknown"],
-    offenseStatus: ["Attempted", "Completed"],
-    injuryType: ["None", "Minor", "Serious", "Fatal"],
-    forceUsed: ["None", "Physical", "Weapon", "Threat", "Coercion"],
-    propertyLoss: ["Stolen", "Damaged", "Recovered", "Seized"],
-    arrestStatus: ["Arrested", "Not Arrested", "Summons", "Warrant"],
-    bodyCam: ["Was used", "Was not used"],
-    location: ["Residence", "Business", "Street", "Park", "School", "Vehicle", "Other"],
-    victimName: ["Unknown", "Withheld"],
-    victimAge: ["Unknown", "Adult", "Juvenile", "Elderly"],
-    suspectAge: ["Unknown", "Teenager", "Adult", "Elderly"],
-    statute: ["Unknown", "To be determined"],
-    offenseDescription: ["Unknown", "To be specified"],
-    clothing: ["Unknown", "Dark clothing", "Light clothing", "Uniform", "Casual"],
-    physicalDescription: ["Unknown", "Average build", "Tall", "Short", "Muscular", "Slender"],
-    offenderCount: ["Unknown", "One", "Two", "Three", "Multiple"],
-    propertyItems: ["Unknown", "Electronics", "Jewelry", "Cash", "Documents", "Vehicle"],
-    propertyDescription: ["Unknown", "Personal items", "Valuables", "Evidence"],
-    propertyValue: ["Unknown", "Under $100", "$100-$500", "$500-$1000", "Over $1000"],
-    arrestType: ["Taken into custody", "Summons", "On view", "Warrant"],
-    charges: ["Unknown", "To be determined"],
-    general: ["Please continue dictating and specify what you need help with"]
   };
 
   // Check if user has seen the help modal before
@@ -228,7 +194,6 @@ const BaseReport = ({
   const prepareRecording = () => {
     setInputMode('ready-to-record');
     setShowRecordingControls(true);
-    setShowDictationTemplate(false);
   };
 
   const startRecording = () => {
@@ -240,8 +205,8 @@ const BaseReport = ({
     setIsPaused(false);
     setRecordingTime(0);
     setShowRecordingControls(false);
-    setShowDictationTemplate(true);
     setInputMode('recording');
+    prepareRecording();
     
     timerRef.current = setInterval(() => {
       setRecordingTime(prev => prev + 1);
@@ -275,7 +240,6 @@ const BaseReport = ({
     setIsListening(false);
     setIsPaused(false);
     setShowRecordingControls(false);
-    setShowDictationTemplate(false);
     setInputMode('ready-to-record');
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -376,91 +340,6 @@ const BaseReport = ({
     form.handleSubmit(onSubmit)();
   };
 
-  // Handle field review requests from DictationTemplate buttons
-  const handleFieldReview = (fieldName: string, options: string[]) => {
-    setReviewModal({
-      isOpen: true,
-      fieldName: "fieldSelection",
-      options: options,
-      currentField: fieldName
-    });
-  };
-
-  // Handle review selection with hierarchical support
-  const handleReviewSelect = (selectedOption: string, segment?: string, field?: string) => {
-    let newText = selectedOption;
-    
-    if (segment && field) {
-      newText = formatFieldInsertion(segment, field, selectedOption);
-    } else if (field) {
-      newText = formatFieldInsertion('direct', field, selectedOption);
-    }
-    
-    const updatedPrompt = `${prompt} ${newText}`.trim();
-    setPrompt(updatedPrompt);
-    
-    setReviewModal({ 
-      isOpen: false, 
-      fieldName: "", 
-      options: [],
-      currentSegment: undefined,
-      currentField: undefined
-    });
-  };
-
-  // Helper function to format field insertions appropriately
-  const formatFieldInsertion = (segment: string, field: string, value: string): string => {
-    const formattingRules: { [key: string]: string } = {
-      'incidentType': `a ${value} incident`,
-      'victimAge': `a ${value}`,
-      'victimGender': `${value}`,
-      'offenseStatus': `${value}`,
-      'arrestStatus': `${value}`,
-      'bodyCam': `${value}`,
-      'location': `${value}`,
-      'race': `${value}`,
-      'ethnicity': `${value}`,
-      'relationship': `${value}`,
-      'injuryType': `${value} injury`,
-      'forceUsed': `${value}`,
-      'propertyLoss': `${value}`,
-      'victimName': `${value}`,
-      'suspectAge': `${value}`,
-      'statute': `${value}`,
-      'offenseDescription': `${value}`,
-      'clothing': `${value} clothing`,
-      'physicalDescription': `${value}`,
-      'offenderCount': `${value} offender(s)`,
-      'propertyItems': `${value}`,
-      'propertyDescription': `${value}`,
-      'propertyValue': `${value}`,
-      'arrestType': `${value}`,
-      'charges': `${value}`
-    };
-    
-    return formattingRules[field] || value;
-  };
-
-  // Handle snippet insertion for writing mode
-  const handleInsertSnippet = (snippet: string) => {
-    setPrompt(prev => {
-      if (textareaRef.current) {
-        const textarea = textareaRef.current;
-        const startPos = textarea.selectionStart;
-        const endPos = textarea.selectionEnd;
-        const newText = prev.substring(0, startPos) + snippet + prev.substring(endPos);
-        
-        setTimeout(() => {
-          textarea.focus();
-          textarea.setSelectionRange(startPos + snippet.length, startPos + snippet.length);
-        }, 0);
-        
-        return newText;
-      }
-      return prev + snippet;
-    });
-  };
-
   // Clean up timer on unmount
   useEffect(() => {
     return () => {
@@ -512,7 +391,7 @@ const BaseReport = ({
     }
   }, [prompt]);
 
-  // SIMPLIFIED: Handle correction submission with arrays only
+  // SIMPLIFIED: Handle correction submission
   const handleCorrectionSubmit = async (correctedData: { 
     enhancedPrompt: string; 
     sessionKey?: string;
@@ -522,30 +401,20 @@ const BaseReport = ({
       setIsLoading(true);
       setCorrectionData(null);
 
-      console.log("🔄 SUBMITTING ENHANCED PROMPT WITH SESSION KEY:", correctedData.sessionKey);
-      console.log("Enhanced prompt length:", correctedData.enhancedPrompt.length);
-      
-      if (correctedData.newOffenses) {
-        console.log("🔄 OFFENSES CHANGED TO:", correctedData.newOffenses.map(o => o.name).join(', '));
-      }
-
       const requestData: any = {
         prompt: correctedData.enhancedPrompt,
-        selectedOffenses: selectedOffenses, // Always send array
+        selectedOffenses: selectedOffenses,
         correctedData: true,
         sessionKey: correctedData.sessionKey,
         generateBoth: false
       };
 
-      // Update local state if offenses changed
       if (correctedData.newOffenses) {
         requestData.newOffenses = correctedData.newOffenses;
         setSelectedOffenses(correctedData.newOffenses);
       }
 
       const response = await axios.post('/api/accident_report', requestData);
-
-      console.log("📨 API Response:", response.data);
 
       if (response.data.narrative) {
         setNarrativeMessage(response.data.narrative);
@@ -559,7 +428,6 @@ const BaseReport = ({
         
         setWorkflowStep('report-complete');
       } else if (response.data.type === "offense_validation_error" || response.data.type === "offense_type_validation_error") {
-        console.log("⚠️ Still missing fields after corrections:", response.data.missingFields);
         setCorrectionData({
           ...response.data,
           originalNarrative: response.data.originalNarrative || correctionData?.originalNarrative
@@ -572,14 +440,11 @@ const BaseReport = ({
           duration: 5000,
         });
       } else {
-        console.error("❌ Unexpected API response format:", response.data);
         throw new Error("Incomplete response from server");
       }
 
     } catch (error: any) {
       console.error("❌ Correction error:", error);
-      console.error("Error response:", error.response?.data);
-      
       toast({
         title: "Error",
         description: error.response?.data?.message || error.message || "Failed to generate report with corrections",
@@ -590,7 +455,7 @@ const BaseReport = ({
     }
   };
 
-  // SIMPLIFIED: Main form submission with arrays only
+  // SIMPLIFIED: Main form submission
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
       setIsLoading(true);
@@ -604,15 +469,21 @@ const BaseReport = ({
         return;
       }
 
+      if (selectedOffenses.length === 0) {
+        toast({
+          title: "No Offense Selected",
+          description: "Please select at least one offense type",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const dataToSend = {
         ...values,
         prompt: prompt.trim(),
-        selectedOffenses: selectedOffenses, // Always send array
+        selectedOffenses: selectedOffenses,
         generateBoth: false
       };
-
-      console.log("Submitting for narrative report generation...");
-      console.log("Selected offenses:", selectedOffenses.map(o => o.name));
 
       const response = await axios.post('/api/accident_report', dataToSend, {
         headers: {
@@ -622,9 +493,6 @@ const BaseReport = ({
 
       // Handle validation errors
       if (response.data.type === "offense_validation_error" || response.data.type === "offense_type_validation_error") {
-        console.log("🔄 VALIDATION ERROR DETECTED:", response.data.type);
-        console.log("Missing fields:", response.data.missingFields);
-        
         setCorrectionData({
           type: response.data.type,
           error: response.data.error,
@@ -667,9 +535,7 @@ const BaseReport = ({
         setNarrativeMessage(response.data.narrative);
         setPrompt("");
         form.reset();
-        setSelectedOffenses([]);
         setInputMode('ready-to-record');
-        setShowDictationTemplate(false);
         setShowRecordingControls(false);
         setWorkflowStep('report-complete');
 
@@ -730,24 +596,11 @@ const BaseReport = ({
     }
   };
 
-  // Check if we have narrative report
-  const hasNarrativeReport = narrativeMessage;
-
   // Helper to get display name for offenses
   const getOffenseDisplayName = () => {
-    if (selectedOffenses.length === 0) return 'No offense selected';
+    if (selectedOffenses.length === 0) return 'Select offense type';
     if (selectedOffenses.length === 1) return selectedOffenses[0].name;
-    return `${selectedOffenses.length} offenses`;
-  };
-
-  // Helper to get combined required fields count
-  const getCombinedRequiredFieldsCount = () => {
-    if (selectedOffenses.length === 0) return 0;
-    const allFields = new Set<string>();
-    selectedOffenses.forEach(offense => {
-      offense.requiredFields.forEach(field => allFields.add(field));
-    });
-    return Array.from(allFields).length;
+    return `${selectedOffenses.length} offenses selected`;
   };
 
   return (
@@ -771,17 +624,6 @@ const BaseReport = ({
         />
       )}
       
-      {/* Review Modal */}
-      <ReviewModal
-        isOpen={reviewModal.isOpen}
-        fieldName={reviewModal.fieldName}
-        options={reviewModal.options}
-        currentSegment={reviewModal.currentSegment}
-        currentField={reviewModal.currentField}
-        onSelect={handleReviewSelect}
-        onClose={() => setReviewModal({ isOpen: false, fieldName: "", options: [] })}
-      />
-      
       {/* Header Section - SIMPLIFIED */}
       <Header
         router={router}
@@ -789,93 +631,111 @@ const BaseReport = ({
         reportName={reportName}
         reportType={reportType}
         setShowHelpModal={setShowHelpModal}
-        showBackButton={workflowStep !== 'offense-selection'}
-        onBack={handleBack}
+        showBackButton={false}
+        onBack={() => {}}
         currentStep={workflowStep}
         selectedOffenses={selectedOffenses}
       />
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        {workflowStep === 'offense-selection' && (
-          <MultiOffenseSelector
-            onOffensesSelect={handleOffensesSelect}
-            onBack={handleBack}
-            initialSelectedOffenses={selectedOffenses}
-          />
-        )}
+        {workflowStep === 'input' && !isLoading && (
+          <div className="max-w-4xl mx-auto space-y-6">
+            {/* Offense Selector - SIMPLIFIED DROPDOWN */}
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-900">Offense Type</h3>
+                {selectedOffenses.length > 0 && (
+                  <span className="text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                    {selectedOffenses.length} selected
+                  </span>
+                )}
+              </div>
+              
+              <div className="relative" ref={offenseDropdownRef}>
+                <button
+                  onClick={() => setShowOffenseDropdown(!showOffenseDropdown)}
+                  className="w-full flex items-center justify-between p-3 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+                >
+                  <span className={selectedOffenses.length === 0 ? "text-gray-500" : "text-gray-900"}>
+                    {getOffenseDisplayName()}
+                  </span>
+                  <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${showOffenseDropdown ? 'rotate-180' : ''}`} />
+                </button>
 
-        {workflowStep === 'report-creation' && (
-          <>
-            {/* Show selected offenses info */}
-            {selectedOffenses.length > 0 && !isLoading &&  (
-              <div className="max-w-6xl mx-auto mb-6">
-                <div className="bg-white border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold text-gray-900">
-                        {getOffenseDisplayName()}
-                      </h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {selectedOffenses.length === 1 ? 
-                          `${selectedOffenses[0].description} • NIBRS: ${selectedOffenses[0].nibrsCode}` :
-                          `Multiple offenses: ${selectedOffenses.map(o => o.name).join(', ')}`
-                        }
-                      </p>
-                      {selectedOffenses.length > 1 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {selectedOffenses.map(offense => (
-                            <span key={offense.id} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              {offense.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                {showOffenseDropdown && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
+                    {/* Search */}
+                    <div className="p-2 border-b border-gray-200">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search offenses..."
+                          value={offenseSearch}
+                          onChange={(e) => setOffenseSearch(e.target.value)}
+                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-xs text-gray-500">
-                        Required Fields:
-                      </div>
-                      <div className="text-sm font-medium text-blue-600">
-                        {getCombinedRequiredFieldsCount()} fields
-                      </div>
+
+                    {/* Offense List */}
+                    <div className="p-2">
+                      {filteredOffenses.map(offense => {
+                        const isSelected = selectedOffenses.find(o => o.id === offense.id);
+                        return (
+                          <div
+                            key={offense.id}
+                            className={`flex items-center p-3 rounded-lg cursor-pointer transition-colors ${
+                              isSelected ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
+                            }`}
+                            onClick={() => handleOffenseSelect(offense)}
+                          >
+                            <div className={`w-4 h-4 rounded border flex items-center justify-center mr-3 ${
+                              isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
+                            }`}>
+                              {isSelected && (
+                                <span className="text-white text-xs">✓</span>
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium text-gray-900">{offense.name}</span>
+                                <code className="text-xs bg-gray-100 px-1 rounded text-gray-600">{offense.code}</code>
+                              </div>
+                              <p className="text-sm text-gray-600 mt-1">{offense.description}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                </div>
+                )}
               </div>
-            )}
 
-            {/* Existing report creation UI */}
-            {inputMode === 'typing' && !hasNarrativeReport && !isLoading && (
-              <WritingTemplate
-                isVisible={true}
-                onInsertSnippet={handleInsertSnippet}
-                onFieldHelp={handleFieldReview}
-                offenseTypes={selectedOffenses}
-              />
-            )}
+              {/* Selected Offenses Chips */}
+              {selectedOffenses.length > 0 && !isLoading && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {selectedOffenses.map(offense => (
+                    <div key={offense.id} className="flex items-center bg-blue-100 text-blue-800 rounded-full px-3 py-1 text-sm">
+                      {offense.name}
+                      <button
+                        onClick={() => handleOffenseSelect(offense)}
+                        className="ml-2 text-blue-600 hover:text-blue-800"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
-            {/* Show DictationTemplate only when actively recording */}
-            {inputMode === 'recording' && (
-              <DictationTemplate
-                isVisible={showDictationTemplate}
-                onFieldReview={handleFieldReview}
-                completedSections={completedSections}
-                fieldOptions={fieldOptions}
-                isRecording={isListening && !isPaused}
-                isPaused={isPaused}
-                recordingTime={recordingTime}
-                formatTime={formatTime}
-                onPauseRecording={pauseRecording}
-                onResumeRecording={resumeRecording}
-                onSubmitRecording={submitRecording}
-                onStopRecording={stopRecording}
-                offenseTypes={selectedOffenses}
-              />
-            )}
-
+        {/* Report Output or Loading */}
             {isLoading ? (
-              <div className="max-w-4xl mx-auto h-64 flex flex-col items-center justify-center rounded-lg">
+              <div className="p-8 flex flex-col items-center justify-center">
                 <Loader />
                 <p className="mt-4 text-sm text-gray-500 text-center max-w-md">
                   Generating {getOffenseDisplayName()} Report...<br />
@@ -883,31 +743,22 @@ const BaseReport = ({
                   This may take a few seconds. Please don't close the tab.
                 </p>
               </div>
-            ) : hasNarrativeReport ? (
-              <div className="max-w-6xl mx-auto">
-                <ReportOutput
-                  message={narrativeMessage}
-                  reportType={reportType}
-                  offenseTypes={selectedOffenses}
-                />
+            ) : narrativeMessage ? (
+              <ReportOutput
+                message={narrativeMessage}
+                reportType={reportType}
+                offenseTypes={selectedOffenses}
+              />
+            ) : (
+              /* Quick Tips */
+              <div>
+                
               </div>
-            ) : null}
-          </>
-        )}
-
-        {workflowStep === 'report-complete' && hasNarrativeReport && (
-          <div className="max-w-6xl mx-auto">
-            <ReportOutput
-              message={narrativeMessage}
-              reportType={reportType}
-              offenseTypes={selectedOffenses}
-            />
-          </div>
-        )}
+            )}
       </div>
 
-      {/* Input Section with Recording Controls - Only show in report creation step */}
-      {workflowStep === 'report-creation' && !hasNarrativeReport && !isLoading && (
+      {/* Input Section - Always visible in input step */}
+      {workflowStep === 'input' && !narrativeMessage && !isLoading && (
         <div className="bg-white px-4 py-3 border-t relative">
           {/* Show RecordingControls when in 'ready-to-record' mode */}
           {inputMode === 'ready-to-record' && (
@@ -960,6 +811,7 @@ const BaseReport = ({
               setInputMode('typing');
               setShowRecordingControls(false);
             }}
+            selectedOffenses={selectedOffenses}
           />
         </div>
       )}

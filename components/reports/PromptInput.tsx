@@ -1,12 +1,11 @@
-// components/reports/sub-components/PromptInput.tsx
+// components/reports/sub-components/PromptInput.tsx - SIMPLIFIED
 import { useForm } from "react-hook-form";
-import { ArrowUp, ClipboardList, Upload, X, Mic, Type } from "lucide-react";
+import { ArrowUp, Upload, X, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Progress } from "@/components/ui/progress";
 import { useRef } from "react";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
 interface PromptInputProps {
   form: any;
@@ -25,13 +24,12 @@ interface PromptInputProps {
   handleDrop: (e: React.DragEvent<HTMLDivElement>) => void;
   selectedFile: File | null;
   setSelectedFile: (file: File | null) => void;
-  // New props for mode switching
   inputMode: 'typing' | 'recording' | 'ready-to-record';
   onSwitchMode: (mode: 'typing' | 'recording') => void;
   onWritingStart: () => void;
-  // Add the missing props
   isSpeechSupported?: boolean;
   microphonePermission?: 'granted' | 'denied' | 'prompt';
+  selectedOffenses: any[];
 }
 
 const PromptInput = ({
@@ -56,6 +54,7 @@ const PromptInput = ({
   onWritingStart,
   isSpeechSupported = true,
   microphonePermission = 'prompt',
+  selectedOffenses = [],
 }: PromptInputProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -63,7 +62,6 @@ const PromptInput = ({
     fileInputRef.current?.click();
   };
 
-  // Detect when user starts typing or focuses on textarea
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newText = e.target.value;
     setPrompt(newText);
@@ -73,21 +71,13 @@ const PromptInput = ({
     e.target.style.height = `${e.target.scrollHeight}px`;
   };
 
-  const handleTextFocus = () => {
-    // When user focuses on textarea, switch to typing mode and show template
-    if (inputMode !== 'typing') {
-      onSwitchMode('typing');
-    }
-    onWritingStart();
-  };
+  // const handleTextFocus = () => {
+  //   if (inputMode !== 'typing') {
+  //     onSwitchMode('typing');
+  //   }
+  //   onWritingStart();
+  // };
 
-  // Helper function to check if mode buttons should be shown
-  const shouldShowModeButtons = (): boolean => {
-  // Show mode buttons when minimal text is entered or no text
-  return (!prompt.trim() || prompt.trim().length < 10) && !isLoading && !isUploading;
-};
-
-  // Helper function to get current tip text
   const getCurrentTip = (): string => {
     if (inputMode === 'recording' || inputMode === 'ready-to-record') {
       return recordingTip;
@@ -95,42 +85,34 @@ const PromptInput = ({
     return defaultTip;
   };
 
+  // Get required fields hint based on selected offenses
+  const getRequiredFieldsHint = (): string => {
+    if (selectedOffenses.length === 0) return "Select offense type to see required fields";
+    
+    const allRequiredFields = new Set<string>();
+    selectedOffenses.forEach(offense => {
+      offense.requiredFields?.forEach((field: string) => allRequiredFields.add(field));
+    });
+    
+    const fields = Array.from(allRequiredFields);
+    if (fields.length === 0) return "No specific fields required";
+    
+    return `Required: ${fields.slice(0, 3).join(', ')}${fields.length > 3 ? '...' : ''}`;
+  };
+
   return (
     <>
       <div className="relative">
-        {shouldShowModeButtons() && (
-  <div className="max-w-4xl mx-auto mb-3 flex gap-2 justify-center">
-    <Button
-      variant={inputMode === 'typing' ? "default" : "outline"}
-      size="sm"
-      onClick={() => {
-        onSwitchMode('typing');
-        onWritingStart();
-      }}
-      className="flex items-center gap-2"
-      disabled={isLoading || isUploading}
-    >
-      <Type className="h-4 w-4" />
-      Type Report
-    </Button>
-    <Button
-      variant={inputMode === 'recording' || inputMode === 'ready-to-record' ? "default" : "outline"}
-      size="sm"
-      onClick={() => onSwitchMode('recording')}
-      className="flex items-center gap-2"
-      disabled={isLoading || isUploading || !isSpeechSupported || microphonePermission === 'denied'}
-    >
-      <Mic className="h-4 w-4" />
-      Dictate Report
-      {!isSpeechSupported && (
-        <span className="text-xs text-red-500 ml-1">(Not supported)</span>
-      )}
-      {microphonePermission === 'denied' && (
-        <span className="text-xs text-red-500 ml-1">(Permission denied)</span>
-      )}
-    </Button>
-  </div>
-)}
+        {/* Required fields hint */}
+        {selectedOffenses.length > 0 && (
+          <div className="max-w-4xl mx-auto mb-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+              <p className="text-xs text-blue-800 text-center">
+                {getRequiredFieldsHint()}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Hidden file input */}
         <input
@@ -145,7 +127,7 @@ const PromptInput = ({
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="w-full relative z-10 max-w-4xl mx-auto flex items-center gap-2 border rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition-all bg-white"
+            className="w-full relative z-10 max-w-4xl mx-auto flex items-start gap-3 border rounded-lg px-4 py-3 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition-all bg-white shadow-sm"
           >
             {/* Textarea */}
             <FormField
@@ -155,49 +137,43 @@ const PromptInput = ({
                   <FormControl className="m-0 p-0">
                     <textarea
                       ref={textareaRef}
-                      className="w-full border-0 focus:ring-0 resize-y min-h-[80px] max-h-[200px] py-2 px-3 text-base transition-all duration-200 ease-in-out bg-transparent"
+                      className="w-full border-0 focus:ring-0 resize-y min-h-[100px] max-h-[180px] py-2 px-1 text-base transition-all duration-200 ease-in-out bg-transparent placeholder-gray-500"
                       disabled={isLoading || isUploading}
-                      placeholder="Type your report, speak using the mic, or upload an audio recording"
+                      placeholder="Describe the incident in detail... Include location, time, involved persons, and what happened."
                       value={prompt}
                       onChange={handleTextChange}
                       // onFocus={handleTextFocus}
-                      rows={3}
-                      style={{ minHeight: "80px", maxHeight: "300px" }}
+                      rows={4}
+                      style={{ minHeight: "100px", maxHeight: "180px" }}
                     />
                   </FormControl>
                 </FormItem>
               )}
             />
 
-            {/* Right side buttons */}
-            <div className="flex items-center gap-2">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      onClick={handleUploadClick}
-                      variant="ghost"
-                      size="icon"
-                      className={cn(
-                        "rounded-full hover:bg-blue-50",
-                        isLoading || isUploading ? "opacity-50 cursor-not-allowed" : ""
-                      )}
-                      disabled={isLoading || isUploading}
-                    >
-                      <Upload className="h-4 w-4 text-gray-600" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="bg-gray-900 text-white text-xs rounded-md px-2 py-1">
-                    Upload Audio
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+            {/* Right side buttons - vertical layout */}
+            <div className="flex flex-col items-center gap-2 pt-2">
 
+              {/* Upload button */}
               <Button
-                className={`bg-blue-600 hover:bg-blue-700 text-white rounded-full flex-shrink-0 ${inputMode === 'recording' ? 'hidden' : 'flex'}`}
+                type="button"
+                onClick={handleUploadClick}
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "rounded-full hover:bg-blue-50 border border-gray-300",
+                  isLoading || isUploading ? "opacity-50 cursor-not-allowed" : ""
+                )}
+                disabled={isLoading || isUploading}
+              >
+                <Upload className="h-4 w-4 text-gray-600" />
+              </Button>
+
+              {/* Submit button */}
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-full flex-shrink-0"
                 type="submit"
-                disabled={isLoading || isUploading || !prompt.trim() || inputMode === 'recording'}
+                disabled={isLoading || isUploading || !prompt.trim() || inputMode === 'recording' || selectedOffenses.length === 0}
                 size="icon"
               >
                 <ArrowUp className="h-4 w-4" />
@@ -241,41 +217,31 @@ const PromptInput = ({
             </Button>
           </div>
         )}
-
-        {/* Drag & drop area for mobile */}
-        {!showRecordingControls && !isUploading && !selectedFile && (
-          <div
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            className="md:hidden border-2 border-dashed border-gray-300 rounded-lg p-4 text-center mt-3 cursor-pointer hover:border-blue-400 transition-colors bg-gray-50"
-            onClick={handleUploadClick}
-          >
-            <Upload className="h-6 w-6 text-gray-400 mx-auto mb-2" />
-            <p className="text-sm font-medium text-gray-700">
-              Upload Audio Recording
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              Tap to select an audio file
-            </p>
-          </div>
-        )}
       </div>
 
       {/* Info tip */}
-      <div className="max-w-6xl mx-auto mt-3">
+      <div className="max-w-4xl mx-auto mt-3">
         <div className="flex items-center justify-center space-x-2">
-          <ClipboardList className="h-4 w-4 text-gray-400" />
-          <p className="text-xs xl:text-sm text-gray-500 text-center">
+          <p className="text-xs text-gray-500 text-center">
             {getCurrentTip()}
           </p>
         </div>
       </div>
 
-      {/* Desktop drag & drop hint */}
+      {/* Drag & drop area for mobile */}
       {!showRecordingControls && !isUploading && !selectedFile && (
-        <div className="hidden md:block max-w-4xl mx-auto mt-2">
-          <p className="text-xs text-gray-400 text-center">
-            You can also drag and drop an audio file anywhere on this area
+        <div
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          className="md:hidden border-2 border-dashed border-gray-300 rounded-lg p-4 text-center mt-3 cursor-pointer hover:border-blue-400 transition-colors bg-gray-50 mx-4"
+          onClick={handleUploadClick}
+        >
+          <Upload className="h-6 w-6 text-gray-400 mx-auto mb-2" />
+          <p className="text-sm font-medium text-gray-700">
+            Upload Audio Recording
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Tap to select an audio file
           </p>
         </div>
       )}

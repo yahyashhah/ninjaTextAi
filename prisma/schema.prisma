@@ -1,3 +1,4 @@
+// schema.prisma - SIMPLIFIED FIXED VERSION
 generator client {
   provider = "prisma-client-js"
 }
@@ -50,6 +51,10 @@ model User {
   departmentReports DepartmentReport[]
   departmentActivities DepartmentActivityLog[]
   createdTemplates DepartmentTemplate[]
+
+  @@index([isAdmin])
+  @@index([departmentAdmin])
+  @@index([createdAt])
 }
 
 model OrganizationSubscription {
@@ -79,8 +84,7 @@ model OrganizationMember {
   updatedAt          DateTime @updatedAt
 
   organization       Organization @relation(fields: [organizationId], references: [id])
-  subscription       OrganizationSubscription? @relation(fields: [organizationId], references: [clerkOrgId]) // New relation
-
+  subscription       OrganizationSubscription? @relation(fields: [organizationId], references: [clerkOrgId])
   user               User?    @relation(fields: [userId], references: [clerkUserId])
 
   @@unique([organizationId, userId])
@@ -107,6 +111,11 @@ model UserReports {
   offenseCode String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  
+  // SIMPLE FIX: Just add the department report ID without creating a cycle
+  departmentReportId String?
+  
+  @@index([departmentReportId])
 }
 
 model ReportsHistory {
@@ -243,6 +252,8 @@ model Organization {
   @@index([name])
   @@index([type])
   @@index([createdAt])
+  @@index([memberCount])
+  @@index([reportCount])
 }
 
 model DepartmentReport {
@@ -276,6 +287,9 @@ model DepartmentReport {
   offenseType String?
   offenseCode String?
 
+  // SIMPLE FIX: Just add the user report ID without creating a cycle
+  userReportId String?
+
   reviewQueueItems ReviewQueueItem[]
 
   @@index([organizationId])
@@ -285,6 +299,8 @@ model DepartmentReport {
   @@index([status])
   @@index([createdAt])
   @@index([flagged])
+  @@index([userReportId])
+  @@index([organizationId, status])
 }
 
 model ReviewQueueItem {

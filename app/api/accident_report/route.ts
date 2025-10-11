@@ -1,4 +1,4 @@
-// app/api/accident_report/route.ts - FIXED & OPTIMIZED
+// app/api/accident_report/route.ts - FIXED MULTI-OFFENSE VERSION
 import { checkApiLimit, increaseAPiLimit } from "@/lib/api-limits";
 import { saveHistoryReport } from "@/lib/history-reports";
 import prismadb from "@/lib/prismadb";
@@ -10,7 +10,7 @@ import { getValidationCacheKey, getCachedValidation, setCachedValidation } from 
 import { getFieldExamples, enhanceCategorizedFields, calculateValidationConfidence } from '@/lib/field-utils';
 import OpenAI from "openai/index.mjs";
 
-// Import NIBRS utilities - PRESERVED AS REQUESTED
+// Import NIBRS utilities
 import { validateDescriptiveNibrs, validateNibrsPayload } from "@/lib/nibrs/Validator";
 import { validateWithTemplate } from "@/lib/nibrs/templates";
 import { buildNIBRSXML } from "@/lib/nibrs/xml";
@@ -172,75 +172,7 @@ function generateMultiOffenseSessionKey(userId: string, offenses: OffenseType[])
   return `${userId}-${offenseIds}-${Date.now()}`;
 }
 
-// NIBRS-specific template instructions - PRESERVED AS REQUESTED
-const NIBRS_TEMPLATE_INSTRUCTIONS = `
-You are a NIBRS data extraction specialist. Convert police narratives into structured NIBRS data.
-
-CRITICAL NIBRS RULES:
-1. FOCUS ON NIBRS-REPORTABLE OFFENSES: assault, theft, burglary, robbery, drug violations, weapon crimes
-2. EXCLUDE: Simple traffic offenses (unless DUI or serious injury), minor incidents not requiring NIBRS reporting
-3. DRUG/WEAPON OFFENSES: Use Society/Public victim (Type S) with injury "N"
-4. INDIVIDUAL CRIMES: Use individual victims (Type I) with specific injuries when applicable
-5. REQUIRED FIELDS: incident date, location, offense description, victim information
-
-NIBRS-SPECIFIC TEMPLATE FORMAT:
-Today is [date] at approximately [time]. I was dispatched to [location] in reference to [type of incident]. 
-Upon arrival, I made contact with [victim information if applicable]. 
-The victim reported that [describe what happened, including actions by offender(s)].
-The offense involved is [offense description]. The offense was [attempted/completed]. 
-The suspect is described as [demographics if known].
-The suspect used [method/weapon/force if applicable]. 
-The victim sustained [type of injury if any]. 
-The property involved includes [list items with descriptions and values if applicable].
-
-OUTPUT FORMAT - JSON ONLY:
-{
-  "extractedData": {
-    "incidentNumber": string (optional),
-    "incidentDate": "YYYY-MM-DD",
-    "incidentTime": "HH:mm" (optional),
-    "locationDescription": string,
-    
-    "offenses": [
-      {
-        "description": string,
-        "attemptedCompleted": "A" | "C"
-      }
-    ],
-    
-    "victims": [
-      {
-        "type": "I" | "S" | "B" | etc.,
-        "age": number (optional),
-        "sex": "M" | "F" | "U",
-        "race": "W" | "B" | "I" | "A" | "P" | "U",
-        "ethnicity": "H" | "N" | "U",
-        "injury": string
-      }
-    ],
-
-    "offenders": [
-      {
-        "age": number (optional),
-        "sex": "M" | "F" | "U",
-        "race": "W" | "B" | "I" | "A" | "P" | "U",
-        "ethnicity": "H" | "N" | "U"
-      }
-    ],
-
-    "properties": [
-      {
-        "lossDescription": string,
-        "propertyDescription": string,
-        "value": number
-      }
-    ]
-  },
-  "narrative": "Cleaned narrative following NIBRS template"
-}
-`;
-
-// NEW: Optimized multi-offense validation using unified validator
+// FIXED: Optimized multi-offense validation using unified validator
 async function validateMultipleOffensesOptimized(
   narrative: string, 
   offenses: OffenseType[]
@@ -248,7 +180,7 @@ async function validateMultipleOffensesOptimized(
   
   console.log("🔍 STARTING OPTIMIZED MULTI-OFFENSE VALIDATION FOR:", offenses.map(o => o.name));
   
-  // Use unified validation for ALL offenses - SINGLE API CALL PER OFFENSE
+  // Use unified validation for ALL offenses
   const unifiedResults = await Promise.all(
     offenses.map(async (offense) => {
       console.log(`🔍 Unified validation for: ${offense.name}`);
@@ -259,7 +191,9 @@ async function validateMultipleOffensesOptimized(
         missingFields: validation.missingFields,
         missingUniversalFields: validation.missingUniversalFields,
         confidenceScore: validation.confidenceScore,
-        offenseConfidence: validation.offenseValidation.confidence
+        offenseConfidence: validation.offenseValidation.confidence,
+        presentFieldsCount: validation.presentFields.length,
+        missingFieldsCount: validation.missingFields.length
       });
       
       return {
@@ -273,34 +207,107 @@ async function validateMultipleOffensesOptimized(
   const allExtractedData = unifiedResults.flatMap(result => result.validation.extractedData || []);
   const allStructuredData = Object.assign({}, ...unifiedResults.map(result => result.validation.structuredData || {}));
 
-  // Combine all missing fields (unique)
+  // DEBUG: Log each offense's field status
+  unifiedResults.forEach(result => {
+    console.log(`🔍 ${result.offense.name} FIELD ANALYSIS:`, {
+      presentFields: result.validation.presentFields,
+      missingFields: result.validation.missingFields,
+      isComplete: result.validation.isComplete
+    });
+  });
+
+  // FIXED: Combine all missing fields (unique) - EXCLUDE UNIVERSAL FIELDS FROM OFFENSE-SPECIFIC COUNT
   const allMissingFields = Array.from(new Set(
-    unifiedResults.flatMap(result => result.validation.missingFields)
+    unifiedResults.flatMap(result => 
+      result.validation.missingFields.filter((field: string) => 
+        !UNIVERSAL_REQUIRED_FIELDS.includes(field)
+      )
+    )
   ));
 
-  // Combine all present fields (unique)
+  // FIXED: Combine all present fields (unique) - INCLUDE ALL FIELDS
   const allPresentFields = Array.from(new Set(
     unifiedResults.flatMap(result => result.validation.presentFields)
   ));
 
-  // Determine if all offenses are complete (including universal fields)
-  const allComplete = unifiedResults.every(result => result.validation.isComplete);
+  // FIXED: Check for universal fields separately
+  const universalFieldsStatus = UNIVERSAL_REQUIRED_FIELDS.map(field => ({
+    field,
+    isPresent: allPresentFields.includes(field)
+  }));
 
-  // Check for universal fields across all offenses
-  const hasAllUniversalFields = UNIVERSAL_REQUIRED_FIELDS.every(field => 
-    allPresentFields.includes(field)
-  );
+  const missingUniversalFields = universalFieldsStatus
+    .filter(item => !item.isPresent)
+    .map(item => item.field);
 
-  console.log("🔍 COMBINED VALIDATION RESULT:", {
-    allComplete,
-    hasAllUniversalFields,
-    totalMissingFields: allMissingFields.length,
-    totalPresentFields: allPresentFields.length,
-    missingUniversal: UNIVERSAL_REQUIRED_FIELDS.filter(f => !allPresentFields.includes(f))
+  console.log("🔍 UNIVERSAL FIELDS ANALYSIS:", {
+    universalFieldsStatus,
+    missingUniversalFields,
+    allPresentFields: allPresentFields.filter(f => UNIVERSAL_REQUIRED_FIELDS.includes(f))
   });
 
-  // Final completeness requires both offense-specific and universal fields
-  const finalComplete = allComplete && hasAllUniversalFields;
+  // FIXED: NEW LOGIC - For multi-offense, we're more lenient
+  // A multi-offense report is considered complete if:
+  // 1. All universal fields are present
+  // 2. At least ONE offense is complete OR significant information is provided for all offenses
+  
+  const hasAllUniversalFields = missingUniversalFields.length === 0;
+  
+  // Count how many offenses are complete
+  const completeOffensesCount = unifiedResults.filter(result => result.validation.isComplete).length;
+  const totalOffenses = unifiedResults.length;
+  
+  // Calculate overall information coverage
+  const totalPresentFields = allPresentFields.length;
+  const totalPossibleFields = Array.from(new Set([
+    ...allPresentFields,
+    ...allMissingFields,
+    ...UNIVERSAL_REQUIRED_FIELDS
+  ])).length;
+  
+  const informationCoverage = totalPossibleFields > 0 ? (totalPresentFields / totalPossibleFields) : 0;
+  
+  console.log("🔍 MULTI-OFFENSE COMPLETENESS ANALYSIS:", {
+    hasAllUniversalFields,
+    completeOffensesCount,
+    totalOffenses,
+    informationCoverage: Math.round(informationCoverage * 100) + '%',
+    totalPresentFields,
+    totalPossibleFields
+  });
+
+  // FIXED: More lenient completion criteria for multi-offense
+  let finalComplete = false;
+  
+  if (hasAllUniversalFields) {
+    if (completeOffensesCount === totalOffenses) {
+      // All offenses are complete - ideal case
+      finalComplete = true;
+      console.log("✅ ALL OFFENSES COMPLETE");
+    } else if (completeOffensesCount >= 1 && informationCoverage >= 0.7) {
+      // At least one offense is complete AND we have good overall coverage
+      finalComplete = true;
+      console.log("✅ MULTI-OFFENSE COMPLETE (lenient mode)");
+    } else if (informationCoverage >= 0.8) {
+      // High overall information coverage even if no single offense is 100% complete
+      finalComplete = true;
+      console.log("✅ MULTI-OFFENSE COMPLETE (high coverage)");
+    } else {
+      console.log("❌ MULTI-OFFENSE INCOMPLETE - insufficient coverage");
+    }
+  } else {
+    console.log("❌ MULTI-OFFENSE INCOMPLETE - missing universal fields");
+  }
+
+  console.log("🔍 FINAL VALIDATION RESULT:", {
+    finalComplete,
+    hasAllUniversalFields,
+    completeOffensesCount,
+    totalOffenses,
+    informationCoverage: Math.round(informationCoverage * 100) + '%',
+    totalMissingFields: allMissingFields.length,
+    totalPresentFields: allPresentFields.length
+  });
 
   // Determine primary offense (highest severity or best match)
   const primaryOffense = determinePrimaryOffense(unifiedResults);
@@ -309,7 +316,7 @@ async function validateMultipleOffensesOptimized(
   return {
     validatedOffenses: unifiedResults,
     allComplete: finalComplete,
-    combinedMissingFields: allMissingFields,
+    combinedMissingFields: [...allMissingFields, ...missingUniversalFields],
     combinedPresentFields: allPresentFields,
     primaryOffense,
     primaryTemplate,
@@ -347,19 +354,28 @@ function determinePrimaryOffense(validationResults: any[]): OffenseType | undefi
     })[0].offense;
 }
 
-// Helper function to combine field examples from multiple offenses
+// FIXED: Helper function to combine field examples from multiple offenses
 function combineFieldExamples(offenses: OffenseType[], missingFields: string[]): Record<string, string> {
   const examples: Record<string, string> = {};
   
   missingFields.forEach(field => {
+    // Universal fields first
     if (UNIVERSAL_REQUIRED_FIELDS.includes(field)) {
       const def = UNIVERSAL_FIELD_DEFINITIONS[field as keyof typeof UNIVERSAL_FIELD_DEFINITIONS];
       examples[field] = def?.examples || `Provide ${field}`;
     } else {
-      const offenseWithField = offenses.find(o => o.fieldDefinitions?.[field]);
-      if (offenseWithField) {
-        examples[field] = getFieldExamples(field, offenseWithField.category);
-      } else {
+      // For offense-specific fields, try each offense until we find a definition
+      let foundExample = false;
+      for (const offense of offenses) {
+        if (offense.fieldDefinitions?.[field]) {
+          examples[field] = getFieldExamples(field, offense.category);
+          foundExample = true;
+          break;
+        }
+      }
+      
+      // If no specific definition found, use generic
+      if (!foundExample) {
         examples[field] = `Provide details about ${field}`;
       }
     }
@@ -368,7 +384,7 @@ function combineFieldExamples(offenses: OffenseType[], missingFields: string[]):
   return examples;
 }
 
-// Generate suggestions from unified results
+// FIXED: Generate suggestions from unified results
 function generateSuggestionsFromUnifiedResults(validationResults: any[]): string[] {
   const suggestions: string[] = [];
   
@@ -407,6 +423,46 @@ function generateSuggestionsFromUnifiedResults(validationResults: any[]): string
   }
   
   return suggestions;
+}
+
+// FIXED: Helper functions for multi-offense responses
+function getMultiOffensePrompt(validation: MultiOffenseValidationResult): string {
+  const missingUniversal = UNIVERSAL_REQUIRED_FIELDS.filter(field => 
+    !validation.combinedPresentFields.includes(field)
+  );
+  
+  if (missingUniversal.length > 0) {
+    const universalNames = missingUniversal.map(f => 
+      UNIVERSAL_FIELD_DEFINITIONS[f as keyof typeof UNIVERSAL_FIELD_DEFINITIONS]?.label || f
+    ).join(', ');
+    return `Please provide mandatory information: ${universalNames}`;
+  }
+  
+  return "Some required information is missing for the selected offenses";
+}
+
+function getMultiOffenseGuidance(validation: MultiOffenseValidationResult): string {
+  const missingUniversal = UNIVERSAL_REQUIRED_FIELDS.filter(field => 
+    !validation.combinedPresentFields.includes(field)
+  );
+  
+  if (missingUniversal.length > 0) {
+    return "Date, time, and location are mandatory for all police reports. Please provide these details first.";
+  }
+  
+  return "Please provide the missing details for the selected offenses below";
+}
+
+function getMultiOffenseValidationMessage(validation: MultiOffenseValidationResult): string {
+  const missingUniversal = UNIVERSAL_REQUIRED_FIELDS.filter(field => 
+    !validation.combinedPresentFields.includes(field)
+  );
+  
+  if (missingUniversal.length > 0) {
+    return `Missing mandatory fields: ${missingUniversal.length} required`;
+  }
+  
+  return `Required information missing for ${validation.validatedOffenses.length} offenses`;
 }
 
 // Enhanced error categorization function
@@ -615,7 +671,7 @@ function tryParseJSON(raw: string) {
   throw new Error("Model output is not valid JSON.");
 }
 
-// Calculate accuracy score for NIBRS reports - PRESERVED AS REQUESTED
+// Calculate accuracy score for NIBRS reports
 function calculateAccuracyScore(data: any, validationErrors: string[] = [], warnings: string[] = []): number {
   if (!data) return 0;
   
@@ -640,7 +696,7 @@ function calculateAccuracyScore(data: any, validationErrors: string[] = [], warn
   return Math.max(0, Math.min(100, baseScore));
 }
 
-// Enhanced NIBRS error extraction with better categorization - PRESERVED AS REQUESTED
+// Enhanced NIBRS error extraction with better categorization
 function extractNIBRSErrorDetails(error: Error, descriptiveData?: any) {
   const errorMessage = error.message || "NIBRS report generation failed";
   const details = {
@@ -693,7 +749,7 @@ function extractNIBRSErrorDetails(error: Error, descriptiveData?: any) {
   return details;
 }
 
-// NIBRS Report Generation - PRESERVED AS REQUESTED
+// NIBRS Report Generation
 async function generateNIBRSReport(prompt: string): Promise<any> {
   const messages: ChatCompletionMessageParam[] = [
     { role: "system", content: NIBRS_TEMPLATE_INSTRUCTIONS },
@@ -782,7 +838,75 @@ async function generateNIBRSReport(prompt: string): Promise<any> {
   };
 } 
 
-// MAIN POST FUNCTION - UPDATED WITH OPTIMIZED VALIDATION
+// NIBRS-specific template instructions
+const NIBRS_TEMPLATE_INSTRUCTIONS = `
+You are a NIBRS data extraction specialist. Convert police narratives into structured NIBRS data.
+
+CRITICAL NIBRS RULES:
+1. FOCUS ON NIBRS-REPORTABLE OFFENSES: assault, theft, burglary, robbery, drug violations, weapon crimes
+2. EXCLUDE: Simple traffic offenses (unless DUI or serious injury), minor incidents not requiring NIBRS reporting
+3. DRUG/WEAPON OFFENSES: Use Society/Public victim (Type S) with injury "N"
+4. INDIVIDUAL CRIMES: Use individual victims (Type I) with specific injuries when applicable
+5. REQUIRED FIELDS: incident date, location, offense description, victim information
+
+NIBRS-SPECIFIC TEMPLATE FORMAT:
+Today is [date] at approximately [time]. I was dispatched to [location] in reference to [type of incident]. 
+Upon arrival, I made contact with [victim information if applicable]. 
+The victim reported that [describe what happened, including actions by offender(s)].
+The offense involved is [offense description]. The offense was [attempted/completed]. 
+The suspect is described as [demographics if known].
+The suspect used [method/weapon/force if applicable]. 
+The victim sustained [type of injury if any]. 
+The property involved includes [list items with descriptions and values if applicable].
+
+OUTPUT FORMAT - JSON ONLY:
+{
+  "extractedData": {
+    "incidentNumber": string (optional),
+    "incidentDate": "YYYY-MM-DD",
+    "incidentTime": "HH:mm" (optional),
+    "locationDescription": string,
+    
+    "offenses": [
+      {
+        "description": string,
+        "attemptedCompleted": "A" | "C"
+      }
+    ],
+    
+    "victims": [
+      {
+        "type": "I" | "S" | "B" | etc.,
+        "age": number (optional),
+        "sex": "M" | "F" | "U",
+        "race": "W" | "B" | "I" | "A" | "P" | "U",
+        "ethnicity": "H" | "N" | "U",
+        "injury": string
+      }
+    ],
+
+    "offenders": [
+      {
+        "age": number (optional),
+        "sex": "M" | "F" | "U",
+        "race": "W" | "B" | "I" | "A" | "P" | "U",
+        "ethnicity": "H" | "N" | "U"
+      }
+    ],
+
+    "properties": [
+      {
+        "lossDescription": string,
+        "propertyDescription": string,
+        "value": number
+      }
+    ]
+  },
+  "narrative": "Cleaned narrative following NIBRS template"
+}
+`;
+
+// MAIN POST FUNCTION - FIXED MULTI-OFFENSE VALIDATION
 export async function POST(req: Request) {
   let startTime = Date.now();
   let userId: string | null = null;
@@ -960,47 +1084,65 @@ export async function POST(req: Request) {
 
         // Check for completeness
         if (!multiOffenseValidation.allComplete) {
-          console.log("=== MULTI-OFFENSE VALIDATION FAILED ===");
-          
-          const errorResponse: CorrectionDataResponse = {
-            type: "offense_validation_error",
-            error: "Please provide missing information",
-            missingFields: multiOffenseValidation.combinedMissingFields,
-            presentFields: multiOffenseValidation.combinedPresentFields,
-            message: "Some required information is missing for the selected offenses",
-            isComplete: false,
-            confidenceScore: Math.min(...multiOffenseValidation.validatedOffenses.map(r => r.validation.confidenceScore)),
-            source: "offense",
-            errorCategory: "OFFENSE_REQUIREMENTS",
-            severity: "REQUIRED",
-            guidance: "Please provide the missing details below",
-            categorizedFields: categorizeMissingFields(multiOffenseValidation.combinedMissingFields, "offense", "multiple"),
-            offenses: currentSelectedOffenses,
-            fieldExamples: combineFieldExamples(currentSelectedOffenses, multiOffenseValidation.combinedMissingFields),
-            validationDetails: {
-              level: 'LOW',
-              message: 'Required information missing',
-              color: 'red'
-            },
-            suggestions: generateSuggestionsFromUnifiedResults(multiOffenseValidation.validatedOffenses),
-            sessionKey: sessionKey || undefined,
-            originalNarrative: prompt,
-            multiOffenseValidation: multiOffenseValidation,
-            extractedData: extractedDataForReport,
-            structuredData: structuredDataForReport,
-            missingUniversalFields: UNIVERSAL_REQUIRED_FIELDS.filter(field => 
-              !multiOffenseValidation.combinedPresentFields.includes(field)
-            )
-          };
-          
-          return NextResponse.json(errorResponse, { status: 200 });
-        }
+  console.log("=== MULTI-OFFENSE VALIDATION FAILED ===");
+  
+  // Calculate overall confidence score
+  const overallConfidence = multiOffenseValidation.validatedOffenses.length > 0 
+    ? multiOffenseValidation.validatedOffenses.reduce((sum, result) => sum + result.validation.confidenceScore, 0) / multiOffenseValidation.validatedOffenses.length
+    : 0;
+
+  // FIXED: Better guidance for multi-offense scenarios
+  const getMultiOffenseGuidance = (validation: MultiOffenseValidationResult) => {
+    const completeCount = validation.validatedOffenses.filter(v => v.validation.isComplete).length;
+    const totalCount = validation.validatedOffenses.length;
+    
+    if (completeCount === 0) {
+      return "Please provide information for all selected offenses. Focus on the most critical details first.";
+    } else if (completeCount < totalCount) {
+      return `You have provided good information for ${completeCount} of ${totalCount} offenses. Please complete the remaining offenses.`;
+    }
+    return "Please provide the missing details for the selected offenses below";
+  };
+
+  const errorResponse: CorrectionDataResponse = {
+    type: "offense_validation_error",
+    error: "Additional information needed for complete report",
+    missingFields: multiOffenseValidation.combinedMissingFields,
+    presentFields: multiOffenseValidation.combinedPresentFields,
+    message: getMultiOffensePrompt(multiOffenseValidation),
+    isComplete: false,
+    confidenceScore: overallConfidence,
+    source: "offense",
+    errorCategory: "OFFENSE_REQUIREMENTS",
+    severity: "REQUIRED",
+    guidance: getMultiOffenseGuidance(multiOffenseValidation),
+    categorizedFields: categorizeMissingFields(multiOffenseValidation.combinedMissingFields, "offense", "multiple"),
+    offenses: currentSelectedOffenses,
+    fieldExamples: combineFieldExamples(currentSelectedOffenses, multiOffenseValidation.combinedMissingFields),
+    validationDetails: {
+      level: multiOffenseValidation.allComplete ? 'COMPLETE' : 'LOW',
+      message: getMultiOffenseValidationMessage(multiOffenseValidation),
+      color: multiOffenseValidation.allComplete ? 'green' : 'red'
+    },
+    suggestions: generateSuggestionsFromUnifiedResults(multiOffenseValidation.validatedOffenses),
+    sessionKey: sessionKey || undefined,
+    originalNarrative: prompt,
+    multiOffenseValidation: multiOffenseValidation,
+    extractedData: extractedDataForReport,
+    structuredData: structuredDataForReport,
+    missingUniversalFields: UNIVERSAL_REQUIRED_FIELDS.filter(field => 
+      !multiOffenseValidation.combinedPresentFields.includes(field)
+    )
+  };
+  
+  return NextResponse.json(errorResponse, { status: 200 });
+}
       }
       
       console.log(`✅ Validation completed for ${currentSelectedOffenses.length} offenses`);
     }
 
-    // STEP 2: HANDLE CORRECTED DATA (similar optimization)
+    // STEP 2: HANDLE CORRECTED DATA
     if (correctedData && currentSelectedOffenses.length > 0) {
       console.log("=== VALIDATING CORRECTED DATA ===");
       
@@ -1141,6 +1283,7 @@ export async function POST(req: Request) {
 
     // STEP 4: SAVE REPORT AND TRACK
     if (narrativeContent) {
+      // Create the main user report first
       const savedReport = await prismadb.userReports.create({
         data: {
           userId: userId,
@@ -1152,22 +1295,31 @@ export async function POST(req: Request) {
         }
       });
 
-      // Save to DepartmentReport table using shared organization
+      let departmentReport = null;
+
+      // Then create department report linked to the user report
       if (organization) {
-        const departmentReport = await prismadb.departmentReport.create({
+        departmentReport = await prismadb.departmentReport.create({
           data: {
             organizationId: organization.id,
             clerkUserId: userId,
+            userReportId: savedReport.id, // Store the user report ID
             reportType: 'narrative_report',
-            title: `${currentSelectedOffenses.length > 0 ? currentSelectedOffenses.map(o => o.name).join(', ') : offenseTemplate?.name || 'Narrative'} Report - ${new Date().toLocaleDateString()}`,
+            title: savedReport.reportName ?? "Untitled Report",
             content: narrativeContent,
             status: 'submitted',
             submittedAt: new Date(),
             flagged: false,
-            offenseType: currentSelectedOffenses.length === 1 ? currentSelectedOffenses[0]?.name : `Multiple: ${currentSelectedOffenses.length} offenses`,
-            offenseCode: currentSelectedOffenses.length === 1 ? currentSelectedOffenses[0]?.code : 'MULTIPLE',
+            offenseType: savedReport.offenseType,
+            offenseCode: savedReport.offenseCode,
             templateUsed: offenseTemplate?.name || selectedTemplate?.templateName
           }
+        });
+
+        // Update the user report with the department report ID
+        await prismadb.userReports.update({
+          where: { id: savedReport.id },
+          data: { departmentReportId: departmentReport.id }
         });
 
         // Update organization report count
@@ -1180,7 +1332,7 @@ export async function POST(req: Request) {
         });
       }
 
-      // Track success
+      // Rest of your tracking code remains the same...
       await trackReportEvent({
         userId: userId,
         reportType: "narrative_report",
@@ -1233,7 +1385,11 @@ export async function POST(req: Request) {
       return NextResponse.json({
         narrative: narrativeContent,
         success: true,
-        templateUsed: offenseTemplate?.name
+        templateUsed: offenseTemplate?.name,
+        reportIds: {
+          userReportId: savedReport.id,
+          departmentReportId: departmentReport?.id
+        }
       }, { status: 200 });
     } else {
       // If narrative generation failed
