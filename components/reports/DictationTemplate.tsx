@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, HelpCircle, Mic, Pause, Play, Square } from "lu
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { OffenseType } from "@/constants/offences";
 
 interface DictationTemplateProps {
   isVisible: boolean;
@@ -19,6 +20,8 @@ interface DictationTemplateProps {
   onResumeRecording?: () => void;
   onSubmitRecording?: () => void;
   onStopRecording?: () => void;
+  offenseTypes?: OffenseType[] | null; // Added
+
 }
 
 const DictationTemplate = ({ 
@@ -38,7 +41,8 @@ const DictationTemplate = ({
   onPauseRecording = () => {},
   onResumeRecording = () => {},
   onSubmitRecording = () => {},
-  onStopRecording = () => {}
+  onStopRecording = () => {},
+  offenseTypes
 }: DictationTemplateProps) => {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["incident", "victim", "offense"]));
   const [currentDate] = useState(new Date().toLocaleDateString());

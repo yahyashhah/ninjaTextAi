@@ -8,6 +8,7 @@ export interface ReportEvent {
   processingTime?: number;
   success: boolean;
   templateUsed?: string;
+  offenseType?: string; 
   error?: string;
 }
 
@@ -33,6 +34,7 @@ export async function trackReportEvent(data: ReportEvent) {
         processingTime: data.processingTime,
         success: data.success,
         templateUsed: data.templateUsed,
+        offenseType: data.offenseType,
         error: data.error,
       }
     });

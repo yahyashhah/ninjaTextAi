@@ -1,4 +1,4 @@
-// components/reports/BaseReport.tsx
+// components/reports/BaseReport.tsx - SIMPLIFIED WITHOUT TEMPLATE SELECTION
 "use client";
 
 import * as z from "zod";
@@ -10,18 +10,17 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader } from "@/components/loader";
 import { useToast } from "@/components/ui/use-toast";
-import TemplateSelectionUI from "./TemplateSelectorUI";
 import HelpModal from "./HelpModal";
 import Header from "./Header";
-import TemplateSelector from "./TemplateSelector";
-import NibrsSummary from "./NibrsSummary";
 import ReportOutput from "./ReportOutput";
 import RecordingControls from "./RecordingControls";
 import PromptInput from "./PromptInput";
-import CorrectionUI from "./CorrectionUI";
 import DictationTemplate from "./DictationTemplate";
 import WritingTemplate from "./WritingTemplate";
 import ReviewModal from "./ReviewModal";
+import MultiOffenseSelector from "./OffenceSelector";
+import { OffenseType } from "@/constants/offences";
+import CorrectionUI from "./CorrectionUI";
 
 export type Template = {
   id: string;
@@ -49,7 +48,7 @@ interface CorrectionData {
   error: string;
   missingFields: string[];
   requiredLevel?: string;
-  suggestions: string[]; // Changed from optional to required array
+  suggestions: string[];
   warnings: string[];
   nibrsData: any;
   confidence?: any;
@@ -57,13 +56,42 @@ interface CorrectionData {
   type?: string;
   isComplete?: boolean;
   confidenceScore?: number;
-  source?: "nibrs" | "template";
+  source?: "nibrs" | "template" | "offense";
   errorCategory?: string;
   severity?: "REQUIRED" | "WARNING" | "OPTIONAL";
   guidance?: string;
   categorizedFields?: any;
   templateName?: string;
+  offenseName?: string;
+  offenseCode?: string;
+  offenses?: OffenseType[];
+  fieldExamples?: { [key: string]: string };
+  validationDetails?: any;
+  sessionKey?: string;
+  originalNarrative?: string;
+  offenseValidation?: {
+    suggestedOffense: OffenseType | null;
+    confidence: number;
+    reason: string;
+    matches: string[];
+    mismatches: string[];
+    alternativeOffenses: OffenseType[];
+  };
+  multiOffenseValidation?: {
+    validatedOffenses: {
+      offense: OffenseType;
+      validation: any;
+      offenseValidation?: any;
+    }[];
+    allComplete: boolean;
+    combinedMissingFields: string[];
+    combinedPresentFields: string[];
+    primaryOffense?: OffenseType;
+  };
 }
+
+// SIMPLIFIED: Only two steps now
+type WorkflowStep = 'offense-selection' | 'report-creation' | 'report-complete';
 
 const BaseReport = ({
   reportType,
@@ -78,21 +106,16 @@ const BaseReport = ({
   const router = useRouter();
   const { toast } = useToast();
   const { startListening, stopListening, transcript } = useVoiceToText();
+  
+  // SIMPLIFIED: Start with offense selection directly
+  const [workflowStep, setWorkflowStep] = useState<WorkflowStep>('offense-selection');
+  const [selectedOffenses, setSelectedOffenses] = useState<OffenseType[]>([]);
+  
+  // Existing states (removed template-related states)
   const [prompt, setPrompt] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [filteredTemplates, setFilteredTemplates] = useState<Template[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-  
-  // Separate states for both reports
   const [narrativeMessage, setNarrativeMessage] = useState("");
-  const [nibrsData, setNibrsData] = useState<any | null>(null);
-  const [xmlData, setXmlData] = useState<string | null>(null);
-  const [accuracyScore, setAccuracyScore] = useState<number | null>(null);
-  
-  const [showTemplates, setShowTemplates] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [showRecordingControls, setShowRecordingControls] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -101,11 +124,6 @@ const BaseReport = ({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [correctionData, setCorrectionData] = useState<CorrectionData | null>(null);
-  
-  // Active tab for viewing results
-  const [activeReportTab, setActiveReportTab] = useState<'narrative' | 'nibrs'>('narrative');
-  
-  // States for templates and modes
   const [showDictationTemplate, setShowDictationTemplate] = useState(false);
   const [inputMode, setInputMode] = useState<'typing' | 'recording' | 'ready-to-record'>('ready-to-record');
   const [reviewModal, setReviewModal] = useState<{
@@ -122,7 +140,6 @@ const BaseReport = ({
   const [completedSections, setCompletedSections] = useState<Set<string>>(new Set());
 
   const timerRef = useRef<NodeJS.Timeout>();
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastTranscriptRef = useRef("");
 
@@ -132,6 +149,28 @@ const BaseReport = ({
       prompt: "",
     },
   });
+
+  // SIMPLIFIED: Just set the offenses array and go to report creation
+  const handleOffensesSelect = (offenses: OffenseType[]) => {
+    setSelectedOffenses(offenses);
+    setWorkflowStep('report-creation');
+    
+    toast({
+      title: offenses.length === 1 ? "Offense Selected" : "Offenses Selected",
+      description: `${offenses.length} offense${offenses.length === 1 ? '' : 's'} loaded. Please provide the incident details.`,
+      variant: "default",
+    });
+  };
+
+  // Handle back navigation in workflow
+  const handleBack = () => {
+    if (workflowStep === 'report-creation') {
+      setWorkflowStep('offense-selection');
+      setSelectedOffenses([]);
+      setPrompt("");
+      setNarrativeMessage("");
+    }
+  };
 
   // Field options for DictationTemplate buttons
   const fieldOptions = {
@@ -193,25 +232,23 @@ const BaseReport = ({
   };
 
   const startRecording = () => {
-  // Reset and prepare for new recording
-  lastTranscriptRef.current = "";
-  setPrompt(""); // Clear any existing content for fresh start
-  
-  startListening();
-  setIsListening(true);
-  setIsPaused(false);
-  setRecordingTime(0);
-  setShowRecordingControls(false);
-  setShowDictationTemplate(true);
-  setInputMode('recording');
-  
-  // Start timer
-  timerRef.current = setInterval(() => {
-    setRecordingTime(prev => prev + 1);
-  }, 1000);
-  
-  console.log("🎤 Recording started - ready for dictation");
-};
+    lastTranscriptRef.current = "";
+    setPrompt("");
+    
+    startListening();
+    setIsListening(true);
+    setIsPaused(false);
+    setRecordingTime(0);
+    setShowRecordingControls(false);
+    setShowDictationTemplate(true);
+    setInputMode('recording');
+    
+    timerRef.current = setInterval(() => {
+      setRecordingTime(prev => prev + 1);
+    }, 1000);
+    
+    console.log("🎤 Recording started - ready for dictation");
+  };
 
   // Pause recording handler
   const pauseRecording = () => {
@@ -434,44 +471,38 @@ const BaseReport = ({
   }, []);
 
   useEffect(() => {
-  if (isListening && transcript) {
-    // Only process if we have new transcript content
-    if (transcript !== lastTranscriptRef.current) {
-      const newContent = getNewContent(lastTranscriptRef.current, transcript);
-      
-      if (newContent) {
-        setPrompt(prev => {
-          // Clean up any trailing spaces and add new content with proper spacing
-          const cleanPrev = prev.trim();
-          const cleanNew = newContent.trim();
-          
-          // If previous text ends with punctuation or is empty, don't add space
-          if (!cleanPrev || /[.!?]\s*$/.test(cleanPrev)) {
-            return cleanPrev + ' ' + cleanNew;
-          } else {
-            return cleanPrev + ' ' + cleanNew;
-          }
-        });
+    if (isListening && transcript) {
+      if (transcript !== lastTranscriptRef.current) {
+        const newContent = getNewContent(lastTranscriptRef.current, transcript);
+        
+        if (newContent) {
+          setPrompt(prev => {
+            const cleanPrev = prev.trim();
+            const cleanNew = newContent.trim();
+            
+            if (!cleanPrev || /[.!?]\s*$/.test(cleanPrev)) {
+              return cleanPrev + ' ' + cleanNew;
+            } else {
+              return cleanPrev + ' ' + cleanNew;
+            }
+          });
+        }
+        
+        lastTranscriptRef.current = transcript;
       }
-      
-      lastTranscriptRef.current = transcript;
     }
-  }
-}, [transcript, isListening]);
+  }, [transcript, isListening]);
 
-// Helper function to extract only new content from transcript
-const getNewContent = (previous: string, current: string): string => {
-  if (!previous) return current;
-  
-  // Simple approach: if current starts with previous, return the difference
-  if (current.startsWith(previous)) {
-    return current.slice(previous.length).trim();
-  }
-  
-  // Fallback: return current if no clear overlap
-  // This handles cases where speech recognition corrects previous words
-  return current;
-};
+  // Helper function to extract only new content from transcript
+  const getNewContent = (previous: string, current: string): string => {
+    if (!previous) return current;
+    
+    if (current.startsWith(previous)) {
+      return current.slice(previous.length).trim();
+    }
+    
+    return current;
+  };
 
   // Auto-resize textarea
   useEffect(() => {
@@ -481,75 +512,77 @@ const getNewContent = (previous: string, current: string): string => {
     }
   }, [prompt]);
 
-  // Fetch templates
-  useEffect(() => {
-    const fetchTemplates = async () => {
-      try {
-        const response = await axios.post('/api/filter_template', {
-          reportTypes: ['accident report', 'accident_report'],
-        });
-        
-        const sortedTemplates = response.data.templates.sort((a: Template, b: Template) => {
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        });
-        setTemplates(sortedTemplates);
-        setFilteredTemplates(sortedTemplates);
-      } catch (error) {
-        console.error("Error fetching templates:", error);
-        toast({
-          title: "Error",
-          description: "Failed to load templates",
-          variant: "destructive",
-        });
-      }
-    };
-    fetchTemplates();
-  }, [reportType, toast]);
-
-  // Filter templates based on search term
-  useEffect(() => {
-    const filtered = templates.filter(template =>
-      template.templateName.toLowerCase().includes(searchTerm.toLowerCase())
-    ).sort((a, b) => {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-    setFilteredTemplates(filtered);
-  }, [searchTerm, templates]);
-
-  // Handle correction submission
-  const handleCorrectionSubmit = async (correctedData: any) => {
+  // SIMPLIFIED: Handle correction submission with arrays only
+  const handleCorrectionSubmit = async (correctedData: { 
+    enhancedPrompt: string; 
+    sessionKey?: string;
+    newOffenses?: OffenseType[];
+  }) => {
     try {
       setIsLoading(true);
       setCorrectionData(null);
 
-      const response = await axios.post('/api/accident_report', {
-        prompt: prompt.trim(),
-        selectedTemplate: selectedTemplate || undefined,
-        correctedData,
-        generateBoth: true
-      });
+      console.log("🔄 SUBMITTING ENHANCED PROMPT WITH SESSION KEY:", correctedData.sessionKey);
+      console.log("Enhanced prompt length:", correctedData.enhancedPrompt.length);
+      
+      if (correctedData.newOffenses) {
+        console.log("🔄 OFFENSES CHANGED TO:", correctedData.newOffenses.map(o => o.name).join(', '));
+      }
 
-      // Handle dual report response
-      if (response.data.narrative && response.data.nibrs) {
+      const requestData: any = {
+        prompt: correctedData.enhancedPrompt,
+        selectedOffenses: selectedOffenses, // Always send array
+        correctedData: true,
+        sessionKey: correctedData.sessionKey,
+        generateBoth: false
+      };
+
+      // Update local state if offenses changed
+      if (correctedData.newOffenses) {
+        requestData.newOffenses = correctedData.newOffenses;
+        setSelectedOffenses(correctedData.newOffenses);
+      }
+
+      const response = await axios.post('/api/accident_report', requestData);
+
+      console.log("📨 API Response:", response.data);
+
+      if (response.data.narrative) {
         setNarrativeMessage(response.data.narrative);
-        setNibrsData(response.data.nibrs);
-        setXmlData(response.data.xml || null);
-        setAccuracyScore(response.data.accuracyScore || null);
+        setPrompt("");
         
         toast({
           title: "Success",
-          description: "Both reports generated successfully with corrected data",
+          description: "Report generated successfully with all corrections",
           variant: "default",
         });
+        
+        setWorkflowStep('report-complete');
+      } else if (response.data.type === "offense_validation_error" || response.data.type === "offense_type_validation_error") {
+        console.log("⚠️ Still missing fields after corrections:", response.data.missingFields);
+        setCorrectionData({
+          ...response.data,
+          originalNarrative: response.data.originalNarrative || correctionData?.originalNarrative
+        });
+
+        toast({
+          title: "Additional Information Needed",
+          description: "Some fields are still missing after your corrections",
+          variant: "default",
+          duration: 5000,
+        });
       } else {
+        console.error("❌ Unexpected API response format:", response.data);
         throw new Error("Incomplete response from server");
       }
 
     } catch (error: any) {
-      console.error("Correction error:", error);
+      console.error("❌ Correction error:", error);
+      console.error("Error response:", error.response?.data);
+      
       toast({
         title: "Error",
-        description: "Failed to submit corrected data",
+        description: error.response?.data?.message || error.message || "Failed to generate report with corrections",
         variant: "destructive",
       });
     } finally {
@@ -557,18 +590,7 @@ const getNewContent = (previous: string, current: string): string => {
     }
   };
 
-  // Handle adding missing information from validation
-  const handleAddMissingInfo = (field: string) => {
-    const fieldPrompt = `Please provide information about ${field}: `;
-    setPrompt(prev => prev + " " + fieldPrompt);
-    setCorrectionData(null);
-    
-    setTimeout(() => {
-      textareaRef.current?.focus();
-    }, 100);
-  };
-
-  // Main form submission - GENERATES BOTH REPORTS
+  // SIMPLIFIED: Main form submission with arrays only
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
       setIsLoading(true);
@@ -585,11 +607,12 @@ const getNewContent = (previous: string, current: string): string => {
       const dataToSend = {
         ...values,
         prompt: prompt.trim(),
-        selectedTemplate: selectedTemplate || undefined,
-        generateBoth: true
+        selectedOffenses: selectedOffenses, // Always send array
+        generateBoth: false
       };
 
-      console.log("Submitting for dual report generation...");
+      console.log("Submitting for narrative report generation...");
+      console.log("Selected offenses:", selectedOffenses.map(o => o.name));
 
       const response = await axios.post('/api/accident_report', dataToSend, {
         headers: {
@@ -597,8 +620,11 @@ const getNewContent = (previous: string, current: string): string => {
         },
       });
 
-      // Handle BOTH types of validation errors
-      if (response.data.type === "validation_error" || response.data.type === "nibrs_validation_error") {
+      // Handle validation errors
+      if (response.data.type === "offense_validation_error" || response.data.type === "offense_type_validation_error") {
+        console.log("🔄 VALIDATION ERROR DETECTED:", response.data.type);
+        console.log("Missing fields:", response.data.missingFields);
+        
         setCorrectionData({
           type: response.data.type,
           error: response.data.error,
@@ -613,38 +639,43 @@ const getNewContent = (previous: string, current: string): string => {
           severity: response.data.severity,
           guidance: response.data.guidance,
           categorizedFields: response.data.categorizedFields,
-          templateName: response.data.templateName
+          offenses: response.data.offenses,
+          fieldExamples: response.data.fieldExamples,
+          validationDetails: response.data.validationDetails,
+          sessionKey: response.data.sessionKey,
+          originalNarrative: response.data.originalNarrative,
+          offenseValidation: response.data.offenseValidation,
+          multiOffenseValidation: response.data.multiOffenseValidation
         });
 
-        const errorTitle = response.data.type === "validation_error" 
-          ? "Template Requirements" 
-          : "NIBRS Standards";
-          
+        let toastMessage = "Please provide the missing information";
+        if (response.data.type === "offense_type_validation_error") {
+          toastMessage = "Review offense classification and provide missing information";
+        }
+
         toast({
-          title: errorTitle,
-          description: "Please provide the missing information",
+          title: response.data.type === "offense_type_validation_error" ? "Offense Classification Review" : "Offense Requirements",
+          description: toastMessage,
           variant: "default",
           duration: 5000,
         });
         return;
       }
 
-      // Handle dual report success
-      if (response.data.narrative && response.data.nibrs) {
+      // Handle narrative report success
+      if (response.data.narrative) {
         setNarrativeMessage(response.data.narrative);
-        setNibrsData(response.data.nibrs);
-        setXmlData(response.data.xml || null);
-        setAccuracyScore(response.data.accuracyScore || null);
         setPrompt("");
         form.reset();
-        setSelectedTemplate(null);
+        setSelectedOffenses([]);
         setInputMode('ready-to-record');
         setShowDictationTemplate(false);
         setShowRecordingControls(false);
+        setWorkflowStep('report-complete');
 
         toast({
           title: "Success!",
-          description: "Both narrative and NIBRS reports generated successfully",
+          description: "Narrative report generated successfully",
           variant: "default",
         });
       } else {
@@ -655,7 +686,6 @@ const getNewContent = (previous: string, current: string): string => {
       console.error("Submission error:", error);
       
       if (error.response?.status === 400 && error.response.data) {
-        // Handle NIBRS-specific validation errors from older format
         const {
           error: apiError,
           nibrs: nibrsData,
@@ -676,10 +706,10 @@ const getNewContent = (previous: string, current: string): string => {
           missingFields: missingFields || [],
           requiredLevel: requiredLevel || "",
           suggestions: suggestions || [],
-          source: "nibrs",
-          errorCategory: "NIBRS_STANDARDS",
+          source: "offense",
+          errorCategory: "OFFENSE_REQUIREMENTS",
           severity: "REQUIRED",
-          guidance: "These fields are required by federal crime reporting standards (NIBRS)."
+          guidance: "These fields are required for the selected offense type."
         });
 
         toast({
@@ -700,8 +730,25 @@ const getNewContent = (previous: string, current: string): string => {
     }
   };
 
-  // Check if we have both reports
-  const hasBothReports = narrativeMessage && nibrsData;
+  // Check if we have narrative report
+  const hasNarrativeReport = narrativeMessage;
+
+  // Helper to get display name for offenses
+  const getOffenseDisplayName = () => {
+    if (selectedOffenses.length === 0) return 'No offense selected';
+    if (selectedOffenses.length === 1) return selectedOffenses[0].name;
+    return `${selectedOffenses.length} offenses`;
+  };
+
+  // Helper to get combined required fields count
+  const getCombinedRequiredFieldsCount = () => {
+    if (selectedOffenses.length === 0) return 0;
+    const allFields = new Set<string>();
+    selectedOffenses.forEach(offense => {
+      offense.requiredFields.forEach(field => allFields.add(field));
+    });
+    return Array.from(allFields).length;
+  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] bg-gray-50">
@@ -719,7 +766,8 @@ const getNewContent = (previous: string, current: string): string => {
           correctionData={correctionData}
           onCorrect={handleCorrectionSubmit}
           onCancel={() => setCorrectionData(null)}
-          onAddMissingInfo={correctionData.type === "validation_error" ? handleAddMissingInfo : undefined}
+          currentInput={prompt}
+          offenses={selectedOffenses}
         />
       )}
       
@@ -734,168 +782,154 @@ const getNewContent = (previous: string, current: string): string => {
         onClose={() => setReviewModal({ isOpen: false, fieldName: "", options: [] })}
       />
       
-      {/* Header Section */}
+      {/* Header Section - SIMPLIFIED */}
       <Header
         router={router}
         reportIcon={reportIcon}
         reportName={reportName}
         reportType={reportType}
         setShowHelpModal={setShowHelpModal}
+        showBackButton={workflowStep !== 'offense-selection'}
+        onBack={handleBack}
+        currentStep={workflowStep}
+        selectedOffenses={selectedOffenses}
       />
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        {inputMode === 'typing' && !hasBothReports && !isLoading && (
-          <WritingTemplate
-            isVisible={true}
-            onInsertSnippet={handleInsertSnippet}
-            onFieldHelp={handleFieldReview}
+        {workflowStep === 'offense-selection' && (
+          <MultiOffenseSelector
+            onOffensesSelect={handleOffensesSelect}
+            onBack={handleBack}
+            initialSelectedOffenses={selectedOffenses}
           />
         )}
 
-        {/* Show DictationTemplate only when actively recording */}
-        {inputMode === 'recording' && (
-          <DictationTemplate
-            isVisible={showDictationTemplate}
-            onFieldReview={handleFieldReview}
-            completedSections={completedSections}
-            fieldOptions={fieldOptions}
-            isRecording={isListening && !isPaused}
-            isPaused={isPaused}
-            recordingTime={recordingTime}
-            formatTime={formatTime}
-            onPauseRecording={pauseRecording}
-            onResumeRecording={resumeRecording}
-            onSubmitRecording={submitRecording}
-            onStopRecording={stopRecording}
-          />
-        )}
-
-        {isLoading ? (
-          <div className="max-w-4xl mx-auto h-64 flex flex-col items-center justify-center rounded-lg">
-            <Loader />
-            <p className="mt-4 text-sm text-gray-500 text-center max-w-md">
-              Generating Both Reports...<br />
-              Creating narrative report and NIBRS report simultaneously.<br />
-              This may take a few seconds. Please don't close the tab.
-            </p>
-          </div>
-        ) : hasBothReports ? (
-          <div className="max-w-6xl mx-auto">
-            {/* Report Type Tabs */}
-            <div className="mb-6 bg-white p-4 rounded-lg border shadow-sm">
-              <div className="flex border-b border-gray-200">
-                <button
-                  className={`px-4 py-2 font-medium transition-colors duration-200 ${
-                    activeReportTab === 'narrative'
-                      ? 'border-b-2 border-blue-600 text-blue-700'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                  onClick={() => setActiveReportTab('narrative')}
-                >
-                  Narrative Report
-                </button>
-                <button
-                  className={`px-4 py-2 font-medium transition-colors duration-200 ${
-                    activeReportTab === 'nibrs'
-                      ? 'border-b-2 border-green-600 text-green-700'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                  onClick={() => setActiveReportTab('nibrs')}
-                >
-                  NIBRS Report
-                </button>
-              </div>
-            </div>
-
-            {/* Narrative Report Tab */}
-            {activeReportTab === 'narrative' && (
-              <div className="space-y-6">
-                {selectedTemplate && (
-                  <TemplateSelector
-                    selectedTemplate={selectedTemplate}
-                    setSelectedTemplate={setSelectedTemplate}
-                    filteredTemplates={filteredTemplates}
-                    router={router}
-                    setSearchTerm={setSearchTerm}
-                    setShowTemplates={setShowTemplates}
-                  />
-                )}
-                
-                <ReportOutput
-                  message={narrativeMessage}
-                  reportType={reportType}
-                />
-              </div>
-            )}
-
-            {/* NIBRS Report Tab */}
-            {activeReportTab === 'nibrs' && (
-              <div className="space-y-6">
-                <NibrsSummary 
-                  nibrs={nibrsData}
-                  xmlData={xmlData}
-                />
-                
-                {/* Also show the narrative in NIBRS tab for context */}
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <h3 className="font-medium text-yellow-800 mb-2">Associated Narrative</h3>
-                  <div className="bg-white p-4 rounded border">
-                    <p className="text-sm whitespace-pre-wrap">{narrativeMessage}</p>
+        {workflowStep === 'report-creation' && (
+          <>
+            {/* Show selected offenses info */}
+            {selectedOffenses.length > 0 && !isLoading &&  (
+              <div className="max-w-6xl mx-auto mb-6">
+                <div className="bg-white border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-gray-900">
+                        {getOffenseDisplayName()}
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {selectedOffenses.length === 1 ? 
+                          `${selectedOffenses[0].description} • NIBRS: ${selectedOffenses[0].nibrsCode}` :
+                          `Multiple offenses: ${selectedOffenses.map(o => o.name).join(', ')}`
+                        }
+                      </p>
+                      {selectedOffenses.length > 1 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {selectedOffenses.map(offense => (
+                            <span key={offense.id} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              {offense.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500">
+                        Required Fields:
+                      </div>
+                      <div className="text-sm font-medium text-blue-600">
+                        {getCombinedRequiredFieldsCount()} fields
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             )}
-          </div>
-        ) : !selectedTemplate ? (
-          <TemplateSelectionUI
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            showTemplates={showTemplates}
-            setShowTemplates={setShowTemplates}
-            filteredTemplates={filteredTemplates}
-            setSelectedTemplate={setSelectedTemplate}
-            router={router}
-            searchInputRef={searchInputRef}
-          />
-        ) : (
-          <div className="max-w-4xl mx-auto">
-            <TemplateSelector
-              selectedTemplate={selectedTemplate}
-              setSelectedTemplate={setSelectedTemplate}
-              filteredTemplates={filteredTemplates}
-              router={router}
-              setSearchTerm={setSearchTerm}
-              setShowTemplates={setShowTemplates}
+
+            {/* Existing report creation UI */}
+            {inputMode === 'typing' && !hasNarrativeReport && !isLoading && (
+              <WritingTemplate
+                isVisible={true}
+                onInsertSnippet={handleInsertSnippet}
+                onFieldHelp={handleFieldReview}
+                offenseTypes={selectedOffenses}
+              />
+            )}
+
+            {/* Show DictationTemplate only when actively recording */}
+            {inputMode === 'recording' && (
+              <DictationTemplate
+                isVisible={showDictationTemplate}
+                onFieldReview={handleFieldReview}
+                completedSections={completedSections}
+                fieldOptions={fieldOptions}
+                isRecording={isListening && !isPaused}
+                isPaused={isPaused}
+                recordingTime={recordingTime}
+                formatTime={formatTime}
+                onPauseRecording={pauseRecording}
+                onResumeRecording={resumeRecording}
+                onSubmitRecording={submitRecording}
+                onStopRecording={stopRecording}
+                offenseTypes={selectedOffenses}
+              />
+            )}
+
+            {isLoading ? (
+              <div className="max-w-4xl mx-auto h-64 flex flex-col items-center justify-center rounded-lg">
+                <Loader />
+                <p className="mt-4 text-sm text-gray-500 text-center max-w-md">
+                  Generating {getOffenseDisplayName()} Report...<br />
+                  Creating professional police narrative report.<br />
+                  This may take a few seconds. Please don't close the tab.
+                </p>
+              </div>
+            ) : hasNarrativeReport ? (
+              <div className="max-w-6xl mx-auto">
+                <ReportOutput
+                  message={narrativeMessage}
+                  reportType={reportType}
+                  offenseTypes={selectedOffenses}
+                />
+              </div>
+            ) : null}
+          </>
+        )}
+
+        {workflowStep === 'report-complete' && hasNarrativeReport && (
+          <div className="max-w-6xl mx-auto">
+            <ReportOutput
+              message={narrativeMessage}
+              reportType={reportType}
+              offenseTypes={selectedOffenses}
             />
           </div>
         )}
       </div>
 
-      {/* Input Section with Recording Controls */}
-      <div className="bg-white px-4 py-3 border-t relative">
-        {/* Show RecordingControls when in 'ready-to-record' mode */}
-        {inputMode === 'ready-to-record' && !hasBothReports && !isLoading && (
-          <RecordingControls
-            showRecordingControls={showRecordingControls}
-            isPaused={isPaused}
-            recordingTime={recordingTime}
-            formatTime={formatTime}
-            resumeRecording={resumeRecording}
-            pauseRecording={pauseRecording}
-            submitRecording={submitRecording}
-            startRecording={startRecording}
-            isUploading={isUploading}
-            uploadProgress={uploadProgress}
-            handleFileSelect={handleFileSelect}
-            handleDragOver={handleDragOver}
-            handleDrop={handleDrop}
-            selectedFile={selectedFile}
-            setSelectedFile={setSelectedFile}
-          />
-        )}
+      {/* Input Section with Recording Controls - Only show in report creation step */}
+      {workflowStep === 'report-creation' && !hasNarrativeReport && !isLoading && (
+        <div className="bg-white px-4 py-3 border-t relative">
+          {/* Show RecordingControls when in 'ready-to-record' mode */}
+          {inputMode === 'ready-to-record' && (
+            <RecordingControls
+              showRecordingControls={showRecordingControls}
+              isPaused={isPaused}
+              recordingTime={recordingTime}
+              formatTime={formatTime}
+              resumeRecording={resumeRecording}
+              pauseRecording={pauseRecording}
+              submitRecording={submitRecording}
+              startRecording={startRecording}
+              isUploading={isUploading}
+              uploadProgress={uploadProgress}
+              handleFileSelect={handleFileSelect}
+              handleDragOver={handleDragOver}
+              handleDrop={handleDrop}
+              selectedFile={selectedFile}
+              setSelectedFile={setSelectedFile}
+            />
+          )}
 
-        {!hasBothReports && !isLoading && (
           <PromptInput
             form={form}
             onSubmit={onSubmit}
@@ -927,8 +961,8 @@ const getNewContent = (previous: string, current: string): string => {
               setShowRecordingControls(false);
             }}
           />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
